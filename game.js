@@ -24,7 +24,7 @@ function choicesFor(word, words) {
   return [...ordered.slice(seed % 4), ...ordered.slice(0, seed % 4)];
 }
 
-export async function viewIceGame(id, view, sfx, request) {
+export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
   view.replaceChildren(node("p", "muted", "正在铺冰面…"));
   let page;
   try { page = await request(`/api/page/${encodeURIComponent(id)}`); }
@@ -33,7 +33,10 @@ export async function viewIceGame(id, view, sfx, request) {
   const results = { ...(page.results || {}) };
   const heights = { ...(page.heights || {}) };
   const voiceGuide = createVoiceGuide();
-  let layerIndex = 0;
+  const allWords = page.layers.flatMap((layer) => layer.words);
+  const languages = [...new Set(allWords.map((word) => word.lang).filter((lang) => names[lang]))];
+  const displayLayers = [{ lang: "mix", words: allWords }, ...languages.map((lang) => ({ lang, words: allWords.filter((word) => word.lang === lang) }))];
+  let layerIndex = Math.max(0, displayLayers.findIndex((layer) => layer.lang === initialView));
   let combo = 0;
   let busy = false;
   const shell = node("section", "game-shell");
@@ -51,7 +54,7 @@ export async function viewIceGame(id, view, sfx, request) {
   let pronunciationTimer;
   let currentPreview = null;
   const onLeavePage = () => {
-    if (location.hash !== `#/page/${id}`) {
+    if (location.hash.split("?")[0] !== `#/page/${id}`) {
       voiceGuide.stop();
       window.removeEventListener("hashchange", onLeavePage);
       window.removeEventListener("resize", onResize);
@@ -74,7 +77,6 @@ export async function viewIceGame(id, view, sfx, request) {
   shell.append(heading, board, status, quiz, preview, hud);
   view.replaceChildren(shell);
 
-  const allWords = page.layers.flatMap((layer) => layer.words);
   const marked = (word) => Object.hasOwn(results, word.hash);
   const completed = (layer) => layer.words.every(marked);
   const total = allWords.length;
@@ -94,11 +96,17 @@ export async function viewIceGame(id, view, sfx, request) {
     exit.title = "返回主页面";
     const subtitle = node("p", "game-help", "悬停看词义 · 左键敲掉 · 右键加厚 · 长按拖向释义" );
     const tabs = node("div", "game-layers");
-    page.layers.forEach((layer, index) => {
+    displayLayers.forEach((layer, index) => {
       const tab = node("button", `game-layer ${index === layerIndex ? "active" : ""} ${completed(layer) ? "complete" : ""}`, `${names[layer.lang] || layer.lang} ${layer.words.filter(marked).length}/${layer.words.length}`);
       tab.type = "button";
-      tab.disabled = index > layerIndex && !completed(page.layers[layerIndex]);
-      tab.addEventListener("click", () => { if (busy) return; layerIndex = index; render(); });
+      tab.setAttribute("aria-pressed", String(index === layerIndex));
+      tab.addEventListener("click", () => {
+        if (busy) return;
+        layerIndex = index;
+        sessionStorage.setItem("ledokol-game-view", layer.lang);
+        history.replaceState(null, "", `#/page/${id}?view=${encodeURIComponent(layer.lang)}`);
+        render();
+      });
       tabs.append(tab);
     });
     const controls = node("div", "game-voice-controls");
@@ -128,7 +136,7 @@ export async function viewIceGame(id, view, sfx, request) {
   }
 
   function fillVoicePanel(panel) {
-    panel.replaceChildren(node("strong", "voice-panel-title", `${names[page.layers[layerIndex].lang]}发音`));
+    panel.replaceChildren(node("strong", "voice-panel-title", `${names[displayLayers[layerIndex].lang]}发音`));
     const styles = node("div", "voice-styles");
     voiceStyles.forEach((style) => {
       const button = node("button", `voice-style game-icon ${voiceGuide.state.style === style.id ? "active" : ""}`, style.icon);
@@ -139,7 +147,7 @@ export async function viewIceGame(id, view, sfx, request) {
       styles.append(button);
     });
     panel.append(styles);
-    const lang = page.layers[layerIndex].lang;
+    const lang = displayLayers[layerIndex].lang;
     const available = lang === "mix" ? [] : voiceGuide.voices(lang);
     if (lang === "mix") panel.append(node("span", "voice-note", "混合冰面按每个词的语种自动选本地语音。"));
     else if (available.length) {
@@ -165,7 +173,7 @@ export async function viewIceGame(id, view, sfx, request) {
 
   function renderBoard() {
     board.replaceChildren();
-    const layer = page.layers[layerIndex];
+    const layer = displayLayers[layerIndex];
     const field = node("div", "hex-field");
     const radius = layer.words.length > 36 ? 4 : 3;
     field.classList.add(`radius-${radius}`);
@@ -247,7 +255,7 @@ export async function viewIceGame(id, view, sfx, request) {
     hud.style.left = `${hudCenter.x}px`;
     hud.style.top = `${hudCenter.y}px`;
     hud.replaceChildren(node("div", "hud-arrow", "➤"));
-    choicesFor(word, page.layers[layerIndex].words).forEach((choice, index) => {
+    choicesFor(word, displayLayers[layerIndex].words).forEach((choice, index) => {
       const option = node("div", `hud-choice ${directions[index]}`, choice);
       option.dataset.direction = directions[index];
       hud.append(option);
@@ -341,10 +349,7 @@ export async function viewIceGame(id, view, sfx, request) {
       }
       hidePreview(); hideHud();
       renderHeading(); renderBoard(); stats();
-      if (action === "knock" && completed(page.layers[layerIndex])) {
-        if (layerIndex < page.layers.length - 1) { layerIndex++; render(); }
-        else { busy = false; await finish(); }
-      }
+      if (allWords.every(marked)) { busy = false; await finish(); }
     } catch (error) {
       preview.replaceChildren(node("span", "game-error", `保存失败：${error.message}`));
       preview.hidden = false;
@@ -408,7 +413,6 @@ export async function viewIceGame(id, view, sfx, request) {
   function render() { renderHeading(); renderBoard(); stats(); hidePreview(); hideHud(); quiz.classList.remove("open"); quiz.replaceChildren(); }
   if (page.status === "done" || page.layers.every(completed)) await finish();
   else {
-    layerIndex = Math.max(0, page.layers.findIndex((layer) => !completed(layer)));
     render();
   }
 }

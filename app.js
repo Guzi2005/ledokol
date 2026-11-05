@@ -7,6 +7,8 @@ const view = document.getElementById("view");
 const card = document.getElementById("gloss-card");
 
 const LANG_NAME = { en: "英语", ja: "日语", ru: "俄语" };
+const gameView = () => sessionStorage.getItem("ledokol-game-view") || "mix";
+const pageLink = (id, lang = gameView()) => `#/page/${id}?view=${encodeURIComponent(lang)}`;
 
 const api = { get: (p) => localRequest(p), post: (p, body) => localRequest(p, body || {}, "POST"), put: (p, body) => localRequest(p, body, "PUT") };
 
@@ -86,19 +88,28 @@ async function viewHome() {
   const [st, q] = await Promise.all([api.get("/api/state"), api.get("/api/queue")]);
   const pending = q.pending || [];
   const activeOrder = [...new Set((st.settings.layerOrder || []).filter((lang) => LANG_NAME[lang]))];
-  const bookmarkOrder = [...activeOrder];
-  for (const lang of Object.keys(LANG_NAME)) if (!bookmarkOrder.includes(lang)) bookmarkOrder.push(lang);
+  const selected = activeOrder.includes(gameView()) ? gameView() : "mix";
+  const bookmarkOrder = ["mix", ...activeOrder];
   const scene = el("section", { class: "home-scene" });
-  const bookmarks = el("nav", { class: "home-bookmarks", "aria-label": "语种词册" },
-    ...bookmarkOrder.map((lang) => el("a", { href: `#/book?lang=${lang}`, class: `bookmark bookmark-${lang}` }, LANG_NAME[lang])),
+  const subtitle = el("p", { class: "home-subtitle" }, selected === "mix" ? "多语种混合冰面" : `${LANG_NAME[selected]}冰面 · 随时切换语种`);
+  const bookmarks = el("nav", { class: "home-bookmarks", "aria-label": "切换冰面语种" },
+    ...bookmarkOrder.map((lang) => el("button", { type: "button", class: `bookmark bookmark-${lang} ${lang === selected ? "active" : ""}`, "aria-pressed": lang === selected ? "true" : "false", onclick: () => {
+      sessionStorage.setItem("ledokol-game-view", lang);
+      for (const tab of bookmarks.querySelectorAll(".bookmark")) {
+        const active = tab.dataset.lang === lang;
+        tab.classList.toggle("active", active);
+        tab.setAttribute("aria-pressed", String(active));
+      }
+      subtitle.textContent = lang === "mix" ? "多语种混合冰面" : `${LANG_NAME[lang]}冰面 · 随时切换语种`;
+    }, dataset: { lang } }, lang === "mix" ? "混合" : LANG_NAME[lang])),
     el("a", { href: "#/settings", class: "home-settings", "aria-label": "设置", title: "设置" }, "⚙")
   );
   const hero = el("div", { class: "home-hero" },
     el("div", { class: "home-ice", "aria-hidden": "true" }, el("span", { class: "home-penguin-shadow" }), el("span", { class: "home-penguin-figure" }, "🐧")),
     el("p", { class: "home-kicker" }, "LEDOKOL"),
     el("h1", {}, "敲开冰面，记住世界"),
-    el("p", { class: "home-subtitle" }, `${activeOrder.map((lang) => LANG_NAME[lang]).join(" · ") || "请选择语种"}｜${st.settings.mixLanguages ? "混合冰面" : "逐层破冰"}`),
-    el("button", { class: "home-play", onclick: pending[0] ? () => location.hash = `#/page/${pending[0].id}` : sail }, pending.length ? "继续敲冰  ▶" : "开始敲冰  ▶"),
+    subtitle,
+    el("button", { class: "home-play", onclick: pending[0] ? () => location.hash = pageLink(pending[0].id) : sail }, pending.length ? "继续敲冰  ▶" : "开始敲冰  ▶"),
     el("p", { class: "home-progress" }, `本地词库 ${Object.values(st.lexicon.byLang || {}).reduce((a,b)=>a+b,0)} 词 · ${pending.length ? "有未完成冰层" : "准备好出发"}`)
   );
   scene.append(bookmarks, hero);
@@ -110,7 +121,7 @@ async function sail() {
   const res = await api.post("/api/enqueue", {});
   if (res.silent) return toast(`积压 ${res.pending} 页 ≥ 上限 ${res.throttle}：静默唤醒`);
   if (res.empty) return toast("词库没有可用词条");
-  location.hash = `#/page/${res.page.id}`;
+  location.hash = pageLink(res.page.id);
 }
 
 /* ---------- 册子 ---------- */
@@ -325,7 +336,7 @@ function route() {
   document.documentElement.classList.toggle("game-mode", parts[0] === "page");
   document.documentElement.classList.toggle("home-mode", !parts.length);
   if (!parts.length) return viewHome();
-  if (parts[0] === "page") return viewIceGame(parts[1], view, sfx, localRequest);
+  if (parts[0] === "page") return viewIceGame(parts[1], view, sfx, localRequest, params.get("view") || gameView());
   if (parts[0] === "book") return viewBook(params);
   if (parts[0] === "settings") return viewSettings(params);
   return viewHome();

@@ -1,7 +1,7 @@
 // All user data stays in this origin's IndexedDB. No application API requests leave the browser.
 const STORE = "ledokol";
 const defaults = {
-  settings: { layerOrder: ["en", "ja", "ru"], mixLanguages: false, wordsPerPage: { en: 8, ja: 8, ru: 8 }, sourceTags: { en: ["starter"], ja: ["starter"], ru: ["starter"] }, pendingThrottle: 1, ai: { endpoint: "http://127.0.0.1:11434/v1", model: "" } },
+  settings: { layerOrder: ["en", "ja", "ru"], mixLanguages: true, wordsPerPage: { en: 8, ja: 8, ru: 8 }, sourceTags: { en: ["starter"], ja: ["starter"], ru: ["starter"] }, pendingThrottle: 1, ai: { endpoint: "http://127.0.0.1:11434/v1", model: "" } },
   mastery: {}, queue: [], seq: 0
 };
 const starter = {

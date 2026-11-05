@@ -412,7 +412,7 @@ code {
 .game-layer { border: 2px solid #278ba9; background: #d6f8ff; border-radius: 18px; padding: 6px 14px; font: inherit; color: #174d72; cursor: pointer; }
 .game-layer.active { background: #fff; box-shadow: 0 4px 0 #147c9a; font-weight: 800; }
 .game-layer.complete { background: #b4e7b1; }
-.game-layer:disabled { opacity: .55; cursor: default; }
+.game-layer:hover,.game-layer:focus-visible { background: #fff9cf; outline: 2px solid #fff; }
 .game-board-wrap { position: relative; overflow: hidden; padding: 18px 0 8px; }
 .hex-field { --tile: min(13vw, calc(16.5dvh - 28px), 105px); position: relative; flex: none; margin: 0 auto; font-size: var(--tile); filter: drop-shadow(0 10px 6px #12638a66); }
 .hex-field.radius-3 { width: 5.5em; height: 6.062em; }
@@ -521,7 +521,9 @@ html.game-mode .game-quiz.open { position: fixed; z-index: 10; left: 50%; top: 5
 .home-scene { position: relative; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; background: radial-gradient(circle at 50% 43%, #b8f4ff 0%, #47bedf 58%, #1479ae 100%); color: #10446b; }
 .home-scene::after { content: ""; position: absolute; inset: 48% -2% -4%; background: url("/water-mesh.svg") center top / cover no-repeat; opacity: .7; pointer-events: none; animation: sea-sway 9s ease-in-out infinite alternate; }
 .home-bookmarks { position: absolute; z-index: 3; top: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-start; gap: clamp(4px,2vw,18px); width: min(95%,700px); justify-content: center; }
-.bookmark { display: grid; place-items: end center; min-width: clamp(68px,18vw,118px); height: clamp(63px,10vh,100px); padding: 0 8px 13px; border: 2px solid #e6fbff; border-top: 0; border-radius: 0 0 18px 18px; background: linear-gradient(#146b9f,#2167ad); box-shadow: 0 8px 12px #0b56846b; color: white; font-size: clamp(15px,2vw,22px); font-weight: 700; text-decoration: none; }
+.bookmark { display: grid; place-items: end center; min-width: clamp(68px,18vw,118px); height: clamp(63px,10vh,100px); padding: 0 8px 13px; border: 2px solid #e6fbff; border-top: 0; border-radius: 0 0 18px 18px; background: linear-gradient(#146b9f,#2167ad); box-shadow: 0 8px 12px #0b56846b; color: white; font: inherit; font-size: clamp(15px,2vw,22px); font-weight: 700; text-decoration: none; cursor: pointer; }
+.bookmark-mix { background: linear-gradient(#0b477d,#19599d); }
+.bookmark.active { height: clamp(73px,12vh,112px); border-color: #ffecaa; box-shadow: 0 8px 0 #0a5d90, 0 11px 16px #0b56846b; }
 .bookmark-ja { background: linear-gradient(#3b91c9,#2780ba); }
 .bookmark-ru { background: linear-gradient(#5bb5d9,#2d8cb9); }
 .bookmark:hover,.bookmark:focus-visible { height: clamp(73px,12vh,112px); outline: 2px solid #ffdc79; }
