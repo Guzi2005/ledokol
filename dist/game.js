@@ -109,7 +109,7 @@ export async function viewIceGame(id, view, sfx, request) {
   function showQuiz(word, tile) {
     if (busy || marked(word)) return;
     sfx.unlock();
-    sfx.knock();
+    sfx.punch();
     fieldSelection(tile);
     quiz.replaceChildren();
     quiz.classList.add("open");
@@ -144,14 +144,14 @@ export async function viewIceGame(id, view, sfx, request) {
       await request(`/api/page/${encodeURIComponent(id)}/mark`, { hash: word.hash, known });
       results[word.hash] = known;
       combo = known ? combo + 1 : 0;
-      known ? sfx.melt() : sfx.crack();
+      known ? sfx.drop() : sfx.crack();
       renderHeading(); renderBoard(); stats();
       const next = node("button", "btn primary quiz-next", completed(page.layers[layerIndex]) ? "下一层冰" : "继续敲冰");
       next.type = "button";
       next.addEventListener("click", async () => {
         quiz.classList.remove("open"); quiz.replaceChildren();
         if (completed(page.layers[layerIndex])) {
-          if (layerIndex < page.layers.length - 1) { layerIndex++; render(); sfx.layerClear(); }
+          if (layerIndex < page.layers.length - 1) { layerIndex++; render(); sfx.shatter(); }
           else await finish();
         }
       });
@@ -191,7 +191,7 @@ export async function viewIceGame(id, view, sfx, request) {
       quiz.append(node("h2", "", "和本地 AI 约定"), node("p", "muted", "复制提示词到你自己的本地 AI，生成故事后粘贴回来。网页不会向 AI 发送任何内容。"), copy, storyInput, saveStory);
       const home = node("a", "btn primary", "回驾驶舱"); home.href = "#/";
       quiz.append(home);
-      sfx.layerClear();
+      sfx.fanfare();
     } catch (error) { quiz.replaceChildren(node("p", "game-error", `结算失败：${error.message}`)); }
     finally { busy = false; }
   }
