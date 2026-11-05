@@ -266,7 +266,7 @@ async function viewSettings() {
             style: "display:none",
             onchange: async (ev) => {
               const text = await ev.target.files[0].text();
-              try { await importBackup(JSON.parse(text)); toast("备份已导入，请刷新页面"); } catch(error) { toast(error.message); }
+              try { const message = await importBackup(JSON.parse(text)); toast(`${message}，请刷新页面`); } catch(error) { toast(error.message); }
             }
           })
         ),
