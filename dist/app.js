@@ -83,66 +83,23 @@ function hideGloss() {
 /* ---------- 驾驶舱 ---------- */
 async function viewHome() {
   const [st, q] = await Promise.all([api.get("/api/state"), api.get("/api/queue")]);
-  const counts = st.lexicon.byLang || {};
   const pending = q.pending || [];
-
-  const actions = el("div", { style: "display:flex;gap:10px;flex-wrap:wrap" });
-  const goBtn = el("a", { class: "btn primary", href: pending[0] ? `#/page/${pending[0].id}` : "#/" }, pending.length ? "开始敲冰" : "去出航");
-  if (!pending[0]) goBtn.addEventListener("click", sail);
-  actions.append(
-    goBtn,
-    el(
-      "button",
-      {
-        class: "btn",
-        onclick: async () => {
-          const res = await api.post("/api/enqueue", {});
-          if (res.silent) toast(`积压 ${res.pending} 页 ≥ 上限 ${res.throttle}：只静默唤醒，不生成新页`);
-          else if (res.empty) toast("词库没有可用词条：请导入自己的词表");
-          else location.hash = `#/page/${res.page.id}`;
-        }
-      },
-      "生成新的一页"
-    ),
-    el("a", { class: "btn ghost", href: "#/settings" }, "设置")
+  const scene = el("section", { class: "home-scene" });
+  const bookmarks = el("nav", { class: "home-bookmarks", "aria-label": "语种词册" },
+    ...Object.entries(LANG_NAME).map(([lang, name]) => el("a", { href: `#/book?lang=${lang}`, class: `bookmark bookmark-${lang}` }, name)),
+    el("a", { href: "#/settings", class: "home-settings", "aria-label": "设置", title: "设置" }, "⚙")
   );
-
-  view.textContent = "";
-  view.append(
-    panel(
-      "今天出航几次",
-      el("div", { class: "kv" }, [
-        el("span", { class: "muted" }, "词库规模"),
-        el("span", {}, Object.entries(counts).map(([l, n]) => `${LANG_NAME[l] || l} ${n}`).join(" · ") || "空"),
-        el("span", { class: "muted" }, "待办页面"),
-        el("span", {}, `${pending.length} / 节流上限 ${st.queue.throttle}`),
-        el("span", { class: "muted" }, "驾驶员"),
-        el("span", {}, "本机浏览器 · 本地 AI 可自行约定"),
-        el("span", { class: "muted" }, "每页冰层"),
-        el("span", {}, st.settings.layerOrder.map((l) => `${LANG_NAME[l]} ${st.settings.wordsPerPage[l]}`).join(" / "))
-      ]),
-      st.lexicon.empty ? el("p", { class: "muted" }, "词库为空：到设置中导入自己的词表") : null,
-      el("div", { style: "margin-top:12px" }, actions)
-    ),
-    panel(
-      "队列",
-      el(
-        "div",
-        { class: "rows" },
-        q.pages.slice(-12).reverse().map((p) =>
-          el("div", { class: "row" }, [
-            el("span", { class: "head" }, el("a", { href: `#/page/${p.id}` }, p.id)),
-            el("span", { class: "chip" }, p.status === "pending" ? "待敲" : "已过"),
-            el("span", {}, p.layers.map((l) => `${LANG_NAME[l.lang]} ${l.count}`).join(" · ")),
-            el("span", { class: "muted" }, p.hasStory ? "故事已带回" : p.status === "done" ? "故事待生成" : ""),
-            el("span", { class: "muted" }, new Date(p.createdAt).toLocaleString())
-          ])
-        )
-      )
-    )
+  const hero = el("div", { class: "home-hero" },
+    el("div", { class: "home-ice", "aria-hidden": "true" }, "🐧"),
+    el("p", { class: "home-kicker" }, "LEDOKOL"),
+    el("h1", {}, "敲开冰面，记住世界"),
+    el("p", { class: "home-subtitle" }, "英语 · 日语 · 俄语｜每次一层冰"),
+    el("button", { class: "home-play", onclick: pending[0] ? () => location.hash = `#/page/${pending[0].id}` : sail }, pending.length ? "继续敲冰  ▶" : "开始敲冰  ▶"),
+    el("p", { class: "home-progress" }, `本地词库 ${Object.values(st.lexicon.byLang || {}).reduce((a,b)=>a+b,0)} 词 · ${pending.length ? "有未完成冰层" : "准备好出发"}`)
   );
+  scene.append(bookmarks, hero);
+  view.replaceChildren(scene);
 }
-
 async function sail() {
   sfx.unlock();
   sfx.voyage();
@@ -285,6 +242,7 @@ function route() {
   const params = new URLSearchParams(qs || "");
   const parts = path.split("/").filter(Boolean);
   document.documentElement.classList.toggle("game-mode", parts[0] === "page");
+  document.documentElement.classList.toggle("home-mode", !parts.length);
   if (!parts.length) return viewHome();
   if (parts[0] === "page") return viewIceGame(parts[1], view, sfx, localRequest);
   if (parts[0] === "book") return viewBook(params);
@@ -296,4 +254,3 @@ window.addEventListener("hashchange", route);
 document.addEventListener("contextmenu", (event) => event.preventDefault());
 window.addEventListener("pointerdown", () => sfx.unlock(), { once: true });
 route();
-

@@ -88,15 +88,37 @@ export async function localRequest(path, body, method = "GET") {
     const page = { id: `LDK-${String(++state.seq).padStart(4,"0")}`, createdAt: new Date().toISOString(), status: "pending", layers, results: {}, story: null, finishedAt: null };
     state.queue.push(page); await write("state", state); return { silent: false, page };
   }
-  const match = url.pathname.match(/^\/api\/page\/([^/]+)(?:\/(mark|finish|story))?$/);
+  const match = url.pathname.match(/^\/api\/page\/([^/]+)(?:\/(mark|raise|finish|story))?$/);
   if (match) {
     const page = state.queue.find((item) => item.id === decodeURIComponent(match[1]));
     if (!page) throw new Error("没有这页冰层");
     if (!match[2]) return pageView(page, lexicon);
     if (match[2] === "mark") {
       if (!page.layers.some((layer) => layer.words.includes(body.hash))) throw new Error("词不在本页");
-      if (!Object.hasOwn(page.results, body.hash)) { page.results[body.hash] = Boolean(body.known); const m = state.mastery[body.hash] || { k:0,u:0,last:null }; if (body.known) { m.k++; m.u = Math.max(0,m.u-1); } else { m.u++; m.k = Math.max(0,m.k-1); } m.last = new Date().toISOString(); state.mastery[body.hash] = m; await write("state",state); }
+      if (page.status === "done") throw new Error("本页已结算");
+      const known = Boolean(body.known);
+      if (page.results[body.hash] !== known) {
+        page.results[body.hash] = known;
+        const m = state.mastery[body.hash] || { k:0,u:0,last:null };
+        if (known) { m.k++; m.u = Math.max(0,m.u-1); }
+        else { m.u++; m.k = Math.max(0,m.k-1); }
+        m.last = new Date().toISOString(); state.mastery[body.hash] = m;
+        await write("state",state);
+      }
       return { ok: true, results: page.results };
+    }
+    if (match[2] === "raise") {
+      if (!page.layers.some((layer) => layer.words.includes(body.hash))) throw new Error("词不在本页");
+      if (page.status === "done" || page.results[body.hash] === true) throw new Error("这块冰已敲掉");
+      page.heights ||= {};
+      page.heights[body.hash] = Math.min(4, (page.heights[body.hash] || 0) + 1);
+      if (!Object.hasOwn(page.results, body.hash)) {
+        page.results[body.hash] = false;
+        const m = state.mastery[body.hash] || { k:0,u:0,last:null };
+        m.u++; m.k = Math.max(0,m.k-1); m.last = new Date().toISOString(); state.mastery[body.hash] = m;
+      }
+      await write("state",state);
+      return { ok:true, height:page.heights[body.hash], results:page.results };
     }
     if (match[2] === "finish") {
       if (page.layers.some((layer) => layer.words.some((hash) => !Object.hasOwn(page.results,hash)))) throw new Error("请先敲完所有冰块");
