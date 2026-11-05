@@ -109,8 +109,13 @@ export async function localRequest(path, body, method = "GET") {
 }
 export async function exportBackup() { return snapshot(); }
 export async function importBackup(payload) {
+  if (payload?.settings && Array.isArray(payload.queue)) {
+    await write("state", payload);
+    return "旧版学习记录已导入；还需导入原来的 lexemes.jsonl 词表";
+  }
   if (!payload || !Array.isArray(payload.lexicon) || !payload.state?.settings || !Array.isArray(payload.state.queue)) throw new Error("备份格式不正确");
   await write("lexicon", payload.lexicon); await write("state", payload.state);
+  return "完整备份已导入";
 }
 export async function importWords(text, filename = "") {
   const existing = await read("lexicon") || structuredClone(sample);
