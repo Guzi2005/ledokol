@@ -97,6 +97,17 @@ function debris({ count = 5, at = 0 }) {
 }
 
 export const sfx = {
+  iceTap() {
+    if (this.muted) return;
+    this.unlock();
+    hiss({ dur: 0.085, gain: 0.18, freq: 1250, q: 0.8, type: "lowpass", send: 0.04 });
+    ring({ freq: 115, to: 82, dur: 0.075, gain: 0.055, type: "sine", send: 0 });
+  },
+  iceLift() {
+    if (this.muted) return;
+    this.unlock();
+    hiss({ dur: 0.13, gain: 0.13, freq: 650, q: 0.6, type: "lowpass", send: 0.02 });
+  },
   get muted() {
     return localStorage.getItem(MUTE_KEY) === "1";
   },
