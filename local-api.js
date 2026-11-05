@@ -1,7 +1,7 @@
 // All user data stays in this origin's IndexedDB. No application API requests leave the browser.
 const STORE = "ledokol";
 const defaults = {
-  settings: { layerOrder: ["en", "ja", "ru"], wordsPerPage: { en: 8, ja: 8, ru: 8 }, sourceTags: { en: ["starter"], ja: ["starter"], ru: ["starter"] }, pendingThrottle: 1 },
+  settings: { layerOrder: ["en", "ja", "ru"], mixLanguages: false, wordsPerPage: { en: 8, ja: 8, ru: 8 }, sourceTags: { en: ["starter"], ja: ["starter"], ru: ["starter"] }, pendingThrottle: 1, ai: { endpoint: "http://127.0.0.1:11434/v1", model: "" } },
   mastery: {}, queue: [], seq: 0
 };
 const starter = {
@@ -58,6 +58,13 @@ function choose(state, lexicon, lang, count, exclude) {
   pool.sort((a, b) => { const ma = state.mastery[a.hash] || { k: 0, u: 0 }; const mb = state.mastery[b.hash] || { k: 0, u: 0 }; return (mb.u * 2 - mb.k) - (ma.u * 2 - ma.k) || a.head.localeCompare(b.head); });
   return pool.slice(0, count).map((word) => word.hash);
 }
+export function planLayers(settings, state, lexicon, exclude = new Set()) {
+  const order = [...new Set((settings.layerOrder || []).filter((lang) => ["en", "ja", "ru"].includes(lang)))];
+  const selected = order.map((lang) => ({ lang, words: choose(state, lexicon, lang, Math.min(60, Math.max(0, Number(settings.wordsPerPage[lang]) || 0)), exclude) })).filter((layer) => layer.words.length);
+  return settings.mixLanguages
+    ? [{ lang: "mix", words: selected.flatMap((layer) => layer.words).slice(0, 60) }].filter((layer) => layer.words.length)
+    : selected;
+}
 export async function localRequest(path, body, method = "GET") {
   const { state, lexicon } = await snapshot();
   const url = new URL(path, location.origin);
@@ -83,7 +90,7 @@ export async function localRequest(path, body, method = "GET") {
     const pending = state.queue.filter((page) => page.status === "pending").length;
     if (pending >= state.settings.pendingThrottle) return { silent: true, pending, throttle: state.settings.pendingThrottle };
     const exclude = new Set(state.queue.filter((page) => page.status === "pending").flatMap((page) => page.layers.flatMap((layer) => layer.words)));
-    const layers = state.settings.layerOrder.map((lang) => ({ lang, words: choose(state, lexicon, lang, Number(state.settings.wordsPerPage[lang]) || 0, exclude) })).filter((layer) => layer.words.length);
+    const layers = planLayers(state.settings, state, lexicon, exclude);
     if (!layers.length) return { empty: true, silent: false };
     const page = { id: `LDK-${String(++state.seq).padStart(4,"0")}`, createdAt: new Date().toISOString(), status: "pending", layers, results: {}, story: null, finishedAt: null };
     state.queue.push(page); await write("state", state); return { silent: false, page };
