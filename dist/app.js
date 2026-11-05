@@ -1,6 +1,7 @@
 import { sfx } from "./sfx.js";
 import { viewIceGame } from "./game.js";
 import { localRequest, exportBackup, importBackup, importWords } from "./local-api.js";
+import { AI_DEFAULTS, aiConfig, listLocalModels } from "./ai.js";
 
 const view = document.getElementById("view");
 const card = document.getElementById("gloss-card");
@@ -80,20 +81,23 @@ function hideGloss() {
   card.hidden = true;
 }
 
-/* ---------- 驾驶舱 ---------- */
+/* ---------- 主页面 ---------- */
 async function viewHome() {
   const [st, q] = await Promise.all([api.get("/api/state"), api.get("/api/queue")]);
   const pending = q.pending || [];
+  const activeOrder = [...new Set((st.settings.layerOrder || []).filter((lang) => LANG_NAME[lang]))];
+  const bookmarkOrder = [...activeOrder];
+  for (const lang of Object.keys(LANG_NAME)) if (!bookmarkOrder.includes(lang)) bookmarkOrder.push(lang);
   const scene = el("section", { class: "home-scene" });
   const bookmarks = el("nav", { class: "home-bookmarks", "aria-label": "语种词册" },
-    ...Object.entries(LANG_NAME).map(([lang, name]) => el("a", { href: `#/book?lang=${lang}`, class: `bookmark bookmark-${lang}` }, name)),
+    ...bookmarkOrder.map((lang) => el("a", { href: `#/book?lang=${lang}`, class: `bookmark bookmark-${lang}` }, LANG_NAME[lang])),
     el("a", { href: "#/settings", class: "home-settings", "aria-label": "设置", title: "设置" }, "⚙")
   );
   const hero = el("div", { class: "home-hero" },
-    el("div", { class: "home-ice", "aria-hidden": "true" }, "🐧"),
+    el("div", { class: "home-ice", "aria-hidden": "true" }, el("span", { class: "home-penguin-shadow" }), el("span", { class: "home-penguin-figure" }, "🐧")),
     el("p", { class: "home-kicker" }, "LEDOKOL"),
     el("h1", {}, "敲开冰面，记住世界"),
-    el("p", { class: "home-subtitle" }, "英语 · 日语 · 俄语｜每次一层冰"),
+    el("p", { class: "home-subtitle" }, `${activeOrder.map((lang) => LANG_NAME[lang]).join(" · ") || "请选择语种"}｜${st.settings.mixLanguages ? "混合冰面" : "逐层破冰"}`),
     el("button", { class: "home-play", onclick: pending[0] ? () => location.hash = `#/page/${pending[0].id}` : sail }, pending.length ? "继续敲冰  ▶" : "开始敲冰  ▶"),
     el("p", { class: "home-progress" }, `本地词库 ${Object.values(st.lexicon.byLang || {}).reduce((a,b)=>a+b,0)} 词 · ${pending.length ? "有未完成冰层" : "准备好出发"}`)
   );
@@ -160,14 +164,77 @@ async function viewBook(params) {
 }
 
 /* ---------- 设置 ---------- */
-async function viewSettings() {
+async function viewSettings(params = new URLSearchParams()) {
   const s = await api.get("/api/settings");
   const num = (lang) => el("input", { type: "number", min: "0", max: "60", value: String(s.wordsPerPage[lang] ?? 0), dataset: { lang, field: "wordsPerPage" } });
   view.textContent = "";
+  let languageOrder = [...new Set((s.layerOrder || []).filter((lang) => LANG_NAME[lang]))];
+  const enabledLanguages = new Set(languageOrder);
+  for (const lang of Object.keys(LANG_NAME)) if (!languageOrder.includes(lang)) languageOrder.push(lang);
+  const orderList = el("div", { class: "language-order" });
+  const renderOrder = () => {
+    orderList.replaceChildren(...languageOrder.map((lang, index) => el("div", { class: "language-order-row" },
+      el("input", { type: "checkbox", checked: enabledLanguages.has(lang) ? "" : null, "aria-label": `启用${LANG_NAME[lang]}`, onchange: (event) => {
+        if (event.target.checked) enabledLanguages.add(lang); else enabledLanguages.delete(lang);
+      } }),
+      el("span", {}, `${index + 1}. ${LANG_NAME[lang]}`),
+      el("button", { type: "button", class: "order-icon", "aria-label": `将${LANG_NAME[lang]}上移`, title: "上移", disabled: index === 0 ? "" : null,
+        onclick: () => { [languageOrder[index - 1], languageOrder[index]] = [languageOrder[index], languageOrder[index - 1]]; renderOrder(); } }, "↑"),
+      el("button", { type: "button", class: "order-icon", "aria-label": `将${LANG_NAME[lang]}下移`, title: "下移", disabled: index === languageOrder.length - 1 ? "" : null,
+        onclick: () => { [languageOrder[index + 1], languageOrder[index]] = [languageOrder[index], languageOrder[index + 1]]; renderOrder(); } }, "↓"))));
+  };
+  renderOrder();
+  const mixInput = el("input", { type: "checkbox", "aria-label": "把已启用语种放在同一片冰面", checked: s.mixLanguages ? "" : null });
+  const savedAi = { ...AI_DEFAULTS, ...(s.ai || {}) };
+  const provider = el("select", { class: "ai-select", "aria-label": "本机 AI 类型" },
+    el("option", { value: "ollama" }, "Ollama"),
+    el("option", { value: "lmstudio" }, "LM Studio"),
+    el("option", { value: "custom" }, "其他 OpenAI 兼容服务"));
+  provider.value = savedAi.endpoint.includes(":11434") ? "ollama" : savedAi.endpoint.includes(":1234") ? "lmstudio" : "custom";
+  const endpointInput = el("input", { type: "url", class: "ai-input", value: savedAi.endpoint, placeholder: "http://127.0.0.1:11434/v1", "aria-label": "本机 AI 地址" });
+  const modelInput = el("input", { class: "ai-input", value: savedAi.model, list: "local-ai-models", placeholder: "选择或输入已加载的模型", "aria-label": "模型名称" });
+  const modelOptions = el("datalist", { id: "local-ai-models" });
+  const aiMessage = el("p", { class: "ai-message", "aria-live": "polite" });
+  const aiHint = el("p", { class: "muted ai-hint" });
+  const updateAiHint = () => {
+    aiHint.textContent = provider.value === "ollama"
+      ? `Ollama：将 ${location.origin} 加入 OLLAMA_ORIGINS 后重启服务；浏览器可能要求允许访问本机网络。`
+      : provider.value === "lmstudio"
+        ? "LM Studio：启动本地服务并开启 CORS；浏览器可能要求允许访问本机网络。"
+        : `本机服务需允许来自 ${location.origin} 的跨来源请求（CORS）。`;
+  };
+  updateAiHint();
+  provider.addEventListener("change", () => {
+    if (provider.value === "ollama") endpointInput.value = "http://127.0.0.1:11434/v1";
+    if (provider.value === "lmstudio") endpointInput.value = "http://127.0.0.1:1234/v1";
+    modelInput.value = "";
+    updateAiHint();
+  });
+  const detectModels = el("button", { class: "btn ghost", type: "button", onclick: async () => {
+    aiMessage.textContent = "正在检测本机模型…";
+    try {
+      const models = await listLocalModels(endpointInput.value);
+      modelOptions.replaceChildren(...models.map((id) => el("option", { value: id })));
+      if (!modelInput.value && models.length) modelInput.value = models[0];
+      aiMessage.textContent = models.length ? `找到 ${models.length} 个本机模型，可在模型输入框中选择。` : "已连接，但没有找到已加载的模型。";
+    } catch (error) { aiMessage.textContent = error.message; }
+  } }, "检测本机模型");
+  const saveAi = el("button", { class: "btn primary", type: "button", onclick: async () => {
+    try {
+      const nextAi = aiConfig({ endpoint: endpointInput.value, model: modelInput.value });
+      await api.put("/api/settings", { ai: nextAi });
+      s.ai = nextAi;
+      aiMessage.textContent = "AI 配置已保存在这个浏览器。";
+    } catch (error) { aiMessage.textContent = error.message; }
+  } }, "保存 AI 配置");
+  const returnRoute = params.get("return");
+  const returnLink = /^page\/LDK-[A-Za-z0-9-]+$/.test(returnRoute || "")
+    ? el("a", { class: "btn ghost", href: `#/${returnRoute}` }, "返回本次结算") : null;
   const form = el("div", { class: "kv" }, [
     ...Object.keys(LANG_NAME).flatMap((l) => [el("span", { class: "muted" }, `${LANG_NAME[l]} · 每页词数`), num(l)]),
-    el("span", { class: "muted" }, "冰层顺序"),
-    el("input", { value: s.layerOrder.join(","), id: "layerOrder" }),
+    el("span", { class: "muted" }, "语种顺序"), orderList,
+    el("span", { class: "muted" }, "冰面布局"),
+    el("label", { class: "mix-setting" }, mixInput, "已启用语种混在同一片冰面"),
     el("span", { class: "muted" }, "积压上限（超过则静默）"),
     el("input", { type: "number", min: "1", max: "10", value: String(s.pendingThrottle), id: "throttle" }),
     ...Object.keys(LANG_NAME).flatMap((l) => [
@@ -193,7 +260,12 @@ async function viewSettings() {
                 if (field === "wordsPerPage") next.wordsPerPage[lang] = Number(node.value);
                 if (field === "sourceTags") next.sourceTags[lang] = node.value.split(/[,\s]+/).filter(Boolean);
               }
-              next.layerOrder = document.getElementById("layerOrder").value.split(/[,\s]+/).filter(Boolean);
+              next.layerOrder = languageOrder.filter((lang) => enabledLanguages.has(lang));
+              next.mixLanguages = mixInput.checked;
+              if (!next.layerOrder.length) { toast("请至少启用一个语种"); return; }
+              if (next.mixLanguages && next.layerOrder.reduce((sum, lang) => sum + next.wordsPerPage[lang], 0) > 60) {
+                toast("同一冰面最多 60 个词，请调低各语种词数"); return;
+              }
               next.pendingThrottle = Number(document.getElementById("throttle").value);
               await api.put("/api/settings", next);
               toast("设置已存入这个浏览器");
@@ -230,7 +302,16 @@ async function viewSettings() {
         el("label", { class: "btn ghost" }, "导入词表（JSON / JSONL / TSV）", el("input", { type:"file", accept:".json,.jsonl,.tsv", style:"display:none", onchange: async (ev) => { const file=ev.target.files?.[0]; if(!file) return; try { const count=await importWords(await file.text(),file.name); toast(`已导入 ${count} 个词，请刷新页面`); } catch(error) { toast(error.message); } } }))
       ),
       el("p", { class: "muted" }, "单词本、学习记录和设置只存在当前浏览器。清除网站数据会删除它们，请定期导出备份。词表 TSV 每行格式：语言代码、词形、中文释义、读音（以 Tab 分隔）；语言代码为 en / ja / ru。")
-    )
+    ),
+    panel("配置 AI",
+      el("p", { class: "muted" }, "连接你电脑上运行的 AI，选择已下载的模型。生成故事时只把本轮待复习词发给这个本机服务；服务自身的联网行为由你在该软件中设置。"),
+      el("div", { class: "ai-config" },
+        el("label", {}, "服务类型", provider),
+        el("label", {}, "本机地址", endpointInput),
+        el("label", {}, "模型名称", modelInput, modelOptions)),
+      el("div", { class: "ai-actions" }, detectModels, saveAi, returnLink),
+      aiMessage,
+      aiHint)
   );
 }
 
@@ -246,7 +327,7 @@ function route() {
   if (!parts.length) return viewHome();
   if (parts[0] === "page") return viewIceGame(parts[1], view, sfx, localRequest);
   if (parts[0] === "book") return viewBook(params);
-  if (parts[0] === "settings") return viewSettings();
+  if (parts[0] === "settings") return viewSettings(params);
   return viewHome();
 }
 

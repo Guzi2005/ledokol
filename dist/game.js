@@ -1,6 +1,7 @@
 import { createVoiceGuide, voiceStyles } from "./voice.js";
+import { generateMemoryStory } from "./ai.js";
 
-const names = { en: "英语", ja: "日语", ru: "俄语" };
+const names = { en: "英语", ja: "日语", ru: "俄语", mix: "多语种" };
 
 function node(tag, className, text) {
   const element = document.createElement(tag);
@@ -139,8 +140,9 @@ export async function viewIceGame(id, view, sfx, request) {
     });
     panel.append(styles);
     const lang = page.layers[layerIndex].lang;
-    const available = voiceGuide.voices(lang);
-    if (available.length) {
+    const available = lang === "mix" ? [] : voiceGuide.voices(lang);
+    if (lang === "mix") panel.append(node("span", "voice-note", "混合冰面按每个词的语种自动选本地语音。"));
+    else if (available.length) {
       const select = node("select", "voice-select");
       select.setAttribute("aria-label", "本地语音");
       available.forEach((voice) => {
@@ -364,18 +366,39 @@ export async function viewIceGame(id, view, sfx, request) {
       const list = node("div", "result-list");
       result.unknown.forEach((word) => list.append(node("p", "result-word", `${word.head} · ${(word.gloss || []).slice(0, 2).join("；")}`)));
       quiz.append(node("h2", "", "裂纹词回顾"), list);
-      if (result.story) quiz.append(node("p", "story", result.story));
-      const prompt = `请用这些不会的词写一段 80～150 字的中文记忆故事。外语词保持原形，后面标注中文释义：\n${result.unknown.map((word) => `${word.lang}: ${word.head}（${(word.gloss || []).join("；")}）`).join("\n")}`;
-      const copy = node("button", "btn ghost", "复制本地 AI 故事提示词");
-      copy.type = "button";
-      copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(prompt); copy.textContent = "已复制，请发给你自己的本地 AI"; } catch { copy.textContent = "复制失败，请检查浏览器权限"; } });
-      const storyInput = node("textarea", "story-input");
-      storyInput.placeholder = "把本地 AI 写的故事粘贴在这里；内容只保存在这个浏览器";
-      storyInput.value = result.story || "";
-      const saveStory = node("button", "btn", "保存故事到本地");
-      saveStory.type = "button";
-      saveStory.addEventListener("click", async () => { try { await request(`/api/page/${encodeURIComponent(id)}/story`, {text:storyInput.value}); saveStory.textContent = "已保存在本地"; } catch(error) { saveStory.textContent = `保存失败：${error.message}`; } });
-      quiz.append(node("h2", "", "和本地 AI 约定"), node("p", "muted", "复制提示词到你自己的本地 AI，生成故事后粘贴回来。网页不会向 AI 发送任何内容。"), copy, storyInput, saveStory);
+      if (result.unknown.length) {
+        const settings = await request("/api/settings");
+        const story = node("p", "story", result.story || "");
+        quiz.append(node("h2", "", "记忆故事"));
+        if (result.story) quiz.append(story);
+        const aiControls = node("div", "result-ai-controls");
+        const generate = node("button", "result-icon", "✦");
+        generate.type = "button";
+        generate.title = result.story ? "重新生成记忆故事" : "生成记忆故事";
+        generate.setAttribute("aria-label", generate.title);
+        const configure = node("a", "result-icon settings-plain", "⚙");
+        configure.href = `#/settings?return=${encodeURIComponent(`page/${id}`)}`;
+        configure.title = "配置本机 AI";
+        configure.setAttribute("aria-label", configure.title);
+        const aiStatus = node("p", "result-ai-status", settings.ai?.model ? `本机模型：${settings.ai.model}` : "先在设置中选择本机 AI 模型");
+        generate.disabled = !settings.ai?.model;
+        generate.addEventListener("click", async () => {
+          generate.disabled = true;
+          aiStatus.textContent = "正在请本机 AI 编写记忆故事…";
+          try {
+            const text = await generateMemoryStory(settings.ai, result.unknown);
+            await request(`/api/page/${encodeURIComponent(id)}/story`, { text });
+            story.textContent = text;
+            if (!story.isConnected) quiz.insertBefore(story, aiControls);
+            aiStatus.textContent = "故事已保存在这个浏览器";
+            generate.title = "重新生成记忆故事";
+            generate.setAttribute("aria-label", generate.title);
+          } catch (error) { aiStatus.textContent = error.message; }
+          finally { generate.disabled = false; }
+        });
+        aiControls.append(generate, configure, aiStatus);
+        quiz.append(aiControls);
+      }
       const home = node("a", "btn primary", "回主页面"); home.href = "#/";
       quiz.append(home);
     } catch (error) { quiz.replaceChildren(node("p", "game-error", `结算失败：${error.message}`)); }

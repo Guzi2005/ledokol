@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sea" x2="0" y2="1"><stop stop-color="#1da2d1"/><stop offset="1" stop-color="#075d9b"/></linearGradient>
+  </defs>
+  <path fill="url(#sea)" d="M0 65 100 48 200 68 300 37 400 57 500 34 600 50 700 30 800 53 900 38 1000 64 1100 45 1200 61V560H0Z"/>
+  <g stroke="#b9eeff" stroke-opacity=".12" stroke-width="2">
+    <path fill="#5ec7e1" fill-opacity=".32" d="m0 65 100-17 36 123L0 193Z"/><path fill="#0b7fb4" fill-opacity=".35" d="m100 48 100 20-64 103Z"/>
+    <path fill="#67cde6" fill-opacity=".23" d="m200 68 100-31 25 122-189 12Z"/><path fill="#0b6fa7" fill-opacity=".38" d="m300 37 100 20-75 102Z"/>
+    <path fill="#76d6e8" fill-opacity=".2" d="m400 57 100-23 40 137-215-12Z"/><path fill="#0d71a7" fill-opacity=".31" d="m500 34 100 16-60 121Z"/>
+    <path fill="#6bd6e7" fill-opacity=".28" d="m600 50 100-20 20 127-180 14Z"/><path fill="#086ca6" fill-opacity=".4" d="m700 30 100 23-80 104Z"/>
+    <path fill="#65c8e6" fill-opacity=".25" d="m800 53 100-15 36 134-216-15Z"/><path fill="#0a72a9" fill-opacity=".37" d="m900 38 100 26-64 108Z"/>
+    <path fill="#81dced" fill-opacity=".22" d="m1000 64 100-19 22 134-186-7Z"/><path fill="#0b70a7" fill-opacity=".4" d="m1100 45 100 16v137l-78-19Z"/>
+    <path fill="#087cb0" fill-opacity=".42" d="M0 193 136 171 204 296 0 317Z"/><path fill="#5cc5e1" fill-opacity=".18" d="m136 171 189-12-121 137Z"/>
+    <path fill="#0a69a3" fill-opacity=".4" d="m325 159 215 12-88 121-248 4Z"/><path fill="#54c2de" fill-opacity=".2" d="m540 171 180-14-73 140-195-5Z"/>
+    <path fill="#0873ac" fill-opacity=".46" d="m720 157 216 15-98 137-191-12Z"/><path fill="#54bdda" fill-opacity=".2" d="m936 172 186 7 78 19v125l-362-14Z"/>
+    <path fill="#53c1dc" fill-opacity=".23" d="M0 317 204 296 121 437 0 421Z"/><path fill="#075c98" fill-opacity=".38" d="m204 296 248-4-104 139-227 6Z"/>
+    <path fill="#75cfe4" fill-opacity=".2" d="m452 292 195 5-63 158-236-24Z"/><path fill="#075e9a" fill-opacity=".38" d="m647 297 191 12-84 127-170 19Z"/>
+    <path fill="#53b6d6" fill-opacity=".23" d="m838 309 362 14v108l-446 5Z"/><path fill="#0b68a1" fill-opacity=".36" d="M0 421 121 437 84 560H0Z"/>
+    <path fill="#6ed1e2" fill-opacity=".18" d="m121 437 227-6 86 129H84Z"/><path fill="#06578f" fill-opacity=".39" d="m348 431 236 24 31 105H434Z"/>
+    <path fill="#4fb7d7" fill-opacity=".21" d="m584 455 170-19 68 124H615Z"/><path fill="#075c96" fill-opacity=".42" d="m754 436 446-5v129H822Z"/>
+  </g>
+  <path d="M0 65 100 48 200 68 300 37 400 57 500 34 600 50 700 30 800 53 900 38 1000 64 1100 45 1200 61" fill="none" stroke="#c8f7ff" stroke-opacity=".32" stroke-width="5"/>
+</svg>
