@@ -441,6 +441,6 @@ code {
 .quiz-next { margin-top: 8px; }
 .result-list { max-height: 180px; overflow: auto; text-align: left; }
 .result-word { padding: 8px 12px; background: #edf7ff; border-radius: 10px; }
-@media(max-width:600px) { .game-shell { padding: 10px 4px; border-width: 5px; border-radius: 24px; } .hex-field { --tile: min(15vw,75px); } .hex-row { gap: 1px; } .hex-tile { font-size: 9px; padding: 3px; } .quiz-options { grid-template-columns: 1fr; } }
+@media(max-width:600px) { .game-shell { padding: 10px 4px; border-width: 5px; border-radius: 24px; } .hex-field { --tile: min(14vw,75px); } .hex-row { gap: 1px; } .hex-row.offset { transform: translateX(calc(var(--tile) * .18)); } .hex-tile { font-size: 9px; padding: 3px; } .quiz-options { grid-template-columns: 1fr; } }
 @media(prefers-reduced-motion:reduce) { .hex-tile { transition: none; } }
 .story-input { display:block; width:100%; min-height:110px; margin:12px 0; padding:12px; border:2px solid #85bdd7; border-radius:12px; font:inherit; resize:vertical; }
