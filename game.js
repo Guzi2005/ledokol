@@ -1,3 +1,5 @@
+import { createVoiceGuide, voiceStyles } from "./voice.js";
+
 const names = { en: "英语", ja: "日语", ru: "俄语" };
 
 function node(tag, className, text) {
@@ -29,6 +31,7 @@ export async function viewIceGame(id, view, sfx, request) {
 
   const results = { ...(page.results || {}) };
   const heights = { ...(page.heights || {}) };
+  const voiceGuide = createVoiceGuide();
   let layerIndex = 0;
   let combo = 0;
   let busy = false;
@@ -43,6 +46,30 @@ export async function viewIceGame(id, view, sfx, request) {
   preview.hidden = true;
   const hud = node("div", "ice-hud");
   hud.hidden = true;
+  let previewTimer;
+  let pronunciationTimer;
+  let currentPreview = null;
+  const onLeavePage = () => {
+    if (location.hash !== `#/page/${id}`) {
+      voiceGuide.stop();
+      window.removeEventListener("hashchange", onLeavePage);
+      window.removeEventListener("resize", onResize);
+      document.removeEventListener("pointerdown", onOutsidePreview);
+      window.speechSynthesis?.removeEventListener?.("voiceschanged", refreshVoiceMenu);
+    }
+  };
+  const onResize = () => {
+    if (!preview.hidden && currentPreview?.tile?.isConnected) {
+      const { word, touch, tile } = currentPreview;
+      showPreview(word, touch, tile);
+    }
+  };
+  window.addEventListener("hashchange", onLeavePage);
+  window.addEventListener("resize", onResize);
+  const onOutsidePreview = (event) => {
+    if (!preview.hidden && preview.classList.contains("touch") && !preview.contains(event.target) && !event.target.closest?.(".hex-tile")) hidePreview();
+  };
+  document.addEventListener("pointerdown", onOutsidePreview);
   shell.append(heading, board, status, quiz, preview, hud);
   view.replaceChildren(shell);
 
@@ -59,10 +86,11 @@ export async function viewIceGame(id, view, sfx, request) {
 
   function renderHeading() {
     heading.replaceChildren();
-    const title = node("div", "game-title", `${id} · 敲冰背词`);
-    const exit = node("a", "game-exit", "退出");
+    const title = node("div", "game-title", "LEDOKOL");
+    const exit = node("a", "game-exit game-icon", "↩");
     exit.href = "#/";
     exit.setAttribute("aria-label", "退出游戏，返回主页面");
+    exit.title = "返回主页面";
     const subtitle = node("p", "game-help", "悬停看词义 · 左键敲掉 · 右键加厚 · 长按拖向释义" );
     const tabs = node("div", "game-layers");
     page.layers.forEach((layer, index) => {
@@ -72,8 +100,66 @@ export async function viewIceGame(id, view, sfx, request) {
       tab.addEventListener("click", () => { if (busy) return; layerIndex = index; render(); });
       tabs.append(tab);
     });
-    heading.append(exit, title, subtitle, tabs);
+    const controls = node("div", "game-voice-controls");
+    const toggleVoice = node("button", "game-icon", voiceGuide.supported && voiceGuide.state.enabled ? "🔊" : "🔇");
+    toggleVoice.type = "button";
+    toggleVoice.disabled = !voiceGuide.supported;
+    toggleVoice.title = !voiceGuide.supported ? "当前浏览器不支持本地发音" : voiceGuide.state.enabled ? "关闭自动发音" : "开启自动发音";
+    toggleVoice.setAttribute("aria-label", toggleVoice.title);
+    toggleVoice.addEventListener("click", () => {
+      voiceGuide.setEnabled(!voiceGuide.state.enabled);
+      toggleVoice.textContent = voiceGuide.state.enabled ? "🔊" : "🔇";
+      toggleVoice.title = voiceGuide.state.enabled ? "关闭自动发音" : "开启自动发音";
+      toggleVoice.setAttribute("aria-label", toggleVoice.title);
+    });
+    const chooseVoice = node("button", "game-icon", "🎙");
+    chooseVoice.type = "button";
+    chooseVoice.title = "选择音色";
+    chooseVoice.setAttribute("aria-label", chooseVoice.title);
+    const voicePanel = node("div", "voice-panel");
+    voicePanel.hidden = true;
+    chooseVoice.addEventListener("click", () => {
+      voicePanel.hidden = !voicePanel.hidden;
+      if (!voicePanel.hidden) fillVoicePanel(voicePanel);
+    });
+    controls.append(toggleVoice, chooseVoice);
+    heading.append(exit, title, subtitle, tabs, controls, voicePanel);
   }
+
+  function fillVoicePanel(panel) {
+    panel.replaceChildren(node("strong", "voice-panel-title", `${names[page.layers[layerIndex].lang]}发音`));
+    const styles = node("div", "voice-styles");
+    voiceStyles.forEach((style) => {
+      const button = node("button", `voice-style game-icon ${voiceGuide.state.style === style.id ? "active" : ""}`, style.icon);
+      button.type = "button";
+      button.title = style.label;
+      button.setAttribute("aria-label", `${style.label}音色`);
+      button.addEventListener("click", () => { voiceGuide.setStyle(style.id); fillVoicePanel(panel); });
+      styles.append(button);
+    });
+    panel.append(styles);
+    const lang = page.layers[layerIndex].lang;
+    const available = voiceGuide.voices(lang);
+    if (available.length) {
+      const select = node("select", "voice-select");
+      select.setAttribute("aria-label", "本地语音");
+      available.forEach((voice) => {
+        const option = node("option", "", voice.name);
+        option.value = voice.voiceURI;
+        select.append(option);
+      });
+      select.value = voiceGuide.chosen(lang)?.voiceURI || "";
+      select.addEventListener("change", () => voiceGuide.setVoice(lang, select.value));
+      panel.append(select);
+    } else panel.append(node("span", "voice-note", voiceGuide.supported ? "当前浏览器没有这个语种的本地语音包" : "当前浏览器不支持语音朗读"));
+    panel.append(node("span", "voice-note", "发音仅调用本机语音，不发送词本。"));
+  }
+
+  function refreshVoiceMenu() {
+    const panel = heading.querySelector(".voice-panel");
+    if (panel && !panel.hidden) fillVoicePanel(panel);
+  }
+  window.speechSynthesis?.addEventListener?.("voiceschanged", refreshVoiceMenu);
 
   function renderBoard() {
     board.replaceChildren();
@@ -107,10 +193,10 @@ export async function viewIceGame(id, view, sfx, request) {
             if (results[word.hash] === false) tile.classList.add("raised");
             tile.style.setProperty("--height", String(heights[word.hash] || (results[word.hash] === false ? 1 : 0)));
             if (results[word.hash] === false) tile.append(node("span", "height-badge", String(heights[word.hash] || 1)));
-            tile.addEventListener("mouseenter", () => showPreview(word, false));
-            tile.addEventListener("mouseleave", () => { if (!matchMedia("(hover: none)").matches) hidePreview(); });
-            tile.addEventListener("focus", () => showPreview(word, false));
-            tile.addEventListener("blur", () => { if (!matchMedia("(hover: none)").matches) hidePreview(); });
+            tile.addEventListener("mouseenter", () => showPreview(word, false, tile, true));
+            tile.addEventListener("mouseleave", () => { if (!matchMedia("(hover: none)").matches) scheduleHidePreview(); });
+            tile.addEventListener("focus", () => showPreview(word, false, tile, true));
+            tile.addEventListener("blur", () => { if (!matchMedia("(hover: none)").matches) scheduleHidePreview(); });
             let pressTimer;
             let dragging = false;
             let suppressClick = false;
@@ -126,7 +212,7 @@ export async function viewIceGame(id, view, sfx, request) {
             tile.addEventListener("pointercancel", () => { clearTimeout(pressTimer); dragging = false; hideHud(); });
             tile.addEventListener("click", () => {
               if (suppressClick) { suppressClick = false; return; }
-              matchMedia("(hover: none)").matches ? showPreview(word, true) : knock(word);
+              matchMedia("(hover: none)").matches ? showPreview(word, true, tile) : knock(word);
             });
             tile.addEventListener("contextmenu", (event) => { event.preventDefault(); raise(word); });
             tile.addEventListener("keydown", (event) => { if (event.key === "ArrowUp") { event.preventDefault(); raise(word); } });
@@ -137,8 +223,9 @@ export async function viewIceGame(id, view, sfx, request) {
         }
         field.append(tile);
     }
-    const penguin = node("div", "board-penguin", "🐧");
+    const penguin = node("div", "board-penguin");
     penguin.setAttribute("aria-hidden", "true");
+    penguin.append(node("span", "penguin-shadow"), node("span", "penguin-figure", "🐧"));
     field.append(penguin);
     board.append(field);
     const caption = node("p", "board-caption", `${names[layer.lang] || layer.lang}冰层 · ${layer.words.length} 个词`);
@@ -181,25 +268,60 @@ export async function viewIceGame(id, view, sfx, request) {
   }
   function hideHud() { hud.hidden = true; hudWord = null; hudCenter = null; hudDirection = null; }
 
-  function showPreview(word, touch) {
+  preview.addEventListener("mouseenter", () => clearTimeout(previewTimer));
+  preview.addEventListener("mouseleave", () => { if (!preview.classList.contains("touch")) hidePreview(); });
+  function scheduleHidePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(hidePreview, 160);
+  }
+  function showPreview(word, touch, tile, autoSpeak = false) {
     if (busy || results[word.hash] === true) return;
+    currentPreview = { word, touch, tile };
+    clearTimeout(previewTimer);
+    clearTimeout(pronunciationTimer);
+    if (tile) {
+      const rect = tile.getBoundingClientRect();
+      const bubbleWidth = Math.min(innerWidth * 0.88, 310);
+      const halfWidth = bubbleWidth / 2;
+      const tileCenter = rect.left + rect.width / 2;
+      const centerX = Math.max(halfWidth + 8, Math.min(innerWidth - halfWidth - 8, tileCenter));
+      const below = rect.top < 160;
+      preview.style.left = `${centerX}px`;
+      preview.style.top = `${below ? rect.bottom + 12 : rect.top - 12}px`;
+      preview.style.setProperty("--tail-x", `${Math.max(24, Math.min(bubbleWidth - 24, tileCenter - centerX + halfWidth))}px`);
+      preview.classList.toggle("below", below);
+    }
     preview.replaceChildren();
     preview.classList.toggle("touch", touch);
     preview.append(node("strong", "peek-head", word.head));
     if (word.reading || word.phonetic) preview.append(node("span", "peek-reading", [word.reading, word.phonetic].filter(Boolean).join(" · ")));
     preview.append(node("span", "peek-meaning", (word.gloss || []).join("；") || "暂无释义"));
     if (results[word.hash] === false) preview.append(node("span", "peek-height", `已加厚 ${heights[word.hash] || 1} 层`));
+    const replay = node("button", "peek-icon", "🔊");
+    replay.type = "button";
+    replay.title = "再听一次";
+    replay.setAttribute("aria-label", `${word.head}，再听一次`);
+    replay.addEventListener("pointerdown", (event) => { clearTimeout(previewTimer); event.preventDefault(); });
+    replay.addEventListener("click", () => {
+      clearTimeout(previewTimer);
+      preview.classList.add("touch");
+      if (!voiceGuide.speak(word, true) && !preview.querySelector(".voice-unavailable")) {
+        preview.append(node("span", "voice-unavailable", "此浏览器暂无本地发音，请在音色面板查看。"));
+      }
+    });
+    preview.append(replay);
     if (touch) {
       const actions = node("div", "peek-actions");
-      const hit = node("button", "btn primary", "敲掉"); hit.type = "button";
-      const lift = node("button", "btn", "加厚"); lift.type = "button";
+      const hit = node("button", "peek-icon action-hit", "⛏"); hit.type = "button"; hit.title = "敲掉"; hit.setAttribute("aria-label", "敲掉冰块");
+      const lift = node("button", "peek-icon action-lift", "⇧"); lift.type = "button"; lift.title = "加厚"; lift.setAttribute("aria-label", "加厚冰块");
       hit.addEventListener("click", () => knock(word));
       lift.addEventListener("click", () => raise(word));
       actions.append(hit, lift); preview.append(actions);
     }
     preview.hidden = false;
+    if (autoSpeak) pronunciationTimer = setTimeout(() => voiceGuide.speak(word), 130);
   }
-  function hidePreview() { preview.hidden = true; }
+  function hidePreview() { clearTimeout(previewTimer); clearTimeout(pronunciationTimer); currentPreview = null; preview.hidden = true; }
 
   async function act(word, action) {
     if (busy || results[word.hash] === true || page.status === "done") return;
@@ -226,8 +348,8 @@ export async function viewIceGame(id, view, sfx, request) {
       preview.hidden = false;
     } finally { busy = false; }
   }
-  const knock = (word) => act(word, "knock");
-  const raise = (word) => act(word, "raise");
+  const knock = (word) => { if (!sfx.muted) sfx.unlock(); return act(word, "knock"); };
+  const raise = (word) => { if (!sfx.muted) sfx.unlock(); return act(word, "raise"); };
 
   async function finish() {
     if (busy) return;
