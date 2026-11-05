@@ -57,6 +57,9 @@ export async function viewIceGame(id, view, sfx, request) {
   function renderHeading() {
     heading.replaceChildren();
     const title = node("div", "game-title", `${id} · 敲冰背词`);
+    const exit = node("a", "game-exit", "退出");
+    exit.href = "#/";
+    exit.setAttribute("aria-label", "退出游戏，返回驾驶舱");
     const subtitle = node("p", "game-help", "点选六角冰块，看词选中文释义。答对碎冰，答错留下裂纹。" );
     const tabs = node("div", "game-layers");
     page.layers.forEach((layer, index) => {
@@ -66,7 +69,7 @@ export async function viewIceGame(id, view, sfx, request) {
       tab.addEventListener("click", () => { layerIndex = index; render(); });
       tabs.append(tab);
     });
-    heading.append(title, subtitle, tabs);
+    heading.append(exit, title, subtitle, tabs);
   }
 
   function renderBoard() {

@@ -284,6 +284,7 @@ function route() {
   const [path, qs] = raw.split("?");
   const params = new URLSearchParams(qs || "");
   const parts = path.split("/").filter(Boolean);
+  document.documentElement.classList.toggle("game-mode", parts[0] === "page");
   if (!parts.length) return viewHome();
   if (parts[0] === "page") return viewIceGame(parts[1], view, sfx, localRequest);
   if (parts[0] === "book") return viewBook(params);
@@ -292,6 +293,9 @@ function route() {
 }
 
 window.addEventListener("hashchange", route);
+document.addEventListener("contextmenu", (event) => {
+  if (document.documentElement.classList.contains("game-mode")) event.preventDefault();
+});
 window.addEventListener("pointerdown", () => sfx.unlock(), { once: true });
 route();
 
