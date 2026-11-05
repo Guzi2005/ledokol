@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LEDOKOL · 本地单词本与敲冰游戏</title>
+    <meta name="description" content="用六角敲冰游戏记英语、日语、俄语单词。单词本和学习记录保存在你的浏览器中。" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🧊</text></svg>" />
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="wordmark" href="#/">
+        <span class="flag"></span>
+        <span>LEDOKOL</span>
+        <small>ледокол · 破冰船词汇复习</small>
+      </a>
+      <nav class="tabs">
+        <a href="#/">驾驶舱</a>
+        <a href="#/book?lang=en">英语册子</a>
+        <a href="#/book?lang=ja">日语册子</a>
+        <a href="#/book?lang=ru">俄语册子</a>
+        <a href="#/settings">设置</a>
+      </nav>
+    </header>
+    <main id="view">载入中…</main>
+    <div id="gloss-card" class="gloss-card" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
