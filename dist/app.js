@@ -293,9 +293,7 @@ function route() {
 }
 
 window.addEventListener("hashchange", route);
-document.addEventListener("contextmenu", (event) => {
-  if (document.documentElement.classList.contains("game-mode")) event.preventDefault();
-});
+document.addEventListener("contextmenu", (event) => event.preventDefault());
 window.addEventListener("pointerdown", () => sfx.unlock(), { once: true });
 route();
 
