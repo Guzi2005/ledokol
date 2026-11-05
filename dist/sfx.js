@@ -100,8 +100,13 @@ export const sfx = {
   iceTap() {
     if (this.muted) return;
     this.unlock();
-    hiss({ dur: 0.085, gain: 0.18, freq: 1250, q: 0.8, type: "lowpass", send: 0.04 });
-    ring({ freq: 115, to: 82, dur: 0.075, gain: 0.055, type: "sine", send: 0 });
+    // A sharp fracture, followed by bright shards and a short icy tail.
+    hiss({ dur: 0.042, gain: 0.35, freq: 2900, q: 3.4, send: 0.2 });
+    hiss({ at: 0.012, dur: 0.085, gain: 0.22, freq: 1050, q: 1.1, send: 0.16 });
+    ring({ at: 0.006, freq: 920, to: 570, dur: 0.17, gain: 0.12, type: "triangle", send: 0.3 });
+    ring({ at: 0.038, freq: 1780, to: 1210, dur: 0.13, gain: 0.075, type: "sine", send: 0.42 });
+    debris({ count: 5, at: 0.025 });
+    hiss({ at: 0.12, dur: 0.12, gain: 0.095, freq: 520, q: 0.7, type: "lowpass", send: 0.18 });
   },
   iceLift() {
     if (this.muted) return;
