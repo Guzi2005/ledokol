@@ -1,0 +1,7 @@
+Spellophone 0.2.1 and its eSpeak NG engine provide the bundled offline speech fallback.
+Copyright 2026 Spelling Creator and eSpeak NG contributors.
+Licensed under GPL-3.0-or-later; see LICENSE in this directory.
+Corresponding source: https://github.com/Spelling-Creator/spellophone
+eSpeak NG source: https://github.com/espeak-ng/espeak-ng
+The browser assets are the unmodified npm release @spelling-creator/spellophone@0.2.1.
+Only the English, Japanese, and Russian dictionaries are included in this Site.

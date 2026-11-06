@@ -33,6 +33,7 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
   const results = { ...(page.results || {}) };
   const heights = { ...(page.heights || {}) };
   const voiceGuide = createVoiceGuide();
+  voiceGuide.onStatus(() => refreshVoiceMenu());
   const allWords = page.layers.flatMap((layer) => layer.words);
   const languages = [...new Set(allWords.map((word) => word.lang).filter((lang) => names[lang]))];
   const displayLayers = [{ lang: "mix", words: allWords }, ...languages.map((lang) => ({ lang, words: allWords.filter((word) => word.lang === lang) }))];
@@ -149,7 +150,7 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
     panel.append(styles);
     const lang = displayLayers[layerIndex].lang;
     const available = lang === "mix" ? [] : voiceGuide.voices(lang);
-    if (lang === "mix") panel.append(node("span", "voice-note", "混合冰面按每个词的语种自动选本地语音。"));
+    if (lang === "mix") panel.append(node("span", "voice-note", "混合冰面按每个词的语种自动发音；缺少系统语音时使用站点内置离线发音。"));
     else if (available.length) {
       const select = node("select", "voice-select");
       select.setAttribute("aria-label", "本地语音");
@@ -161,8 +162,9 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
       select.value = voiceGuide.chosen(lang)?.voiceURI || "";
       select.addEventListener("change", () => voiceGuide.setVoice(lang, select.value));
       panel.append(select);
-    } else panel.append(node("span", "voice-note", voiceGuide.supported ? "当前浏览器没有这个语种的本地语音包" : "当前浏览器不支持语音朗读"));
-    panel.append(node("span", "voice-note", "发音仅调用本机语音，不发送词本。"));
+    } else panel.append(node("span", "voice-note", voiceGuide.supported ? "没有系统语音包时，自动使用站点内置离线发音。" : "当前浏览器不支持语音朗读"));
+    if (voiceGuide.status) panel.append(node("span", "voice-note", voiceGuide.status));
+    panel.append(node("span", "voice-note", "发音在设备内生成，不发送词本。"));
   }
 
   function refreshVoiceMenu() {
@@ -316,7 +318,7 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
       clearTimeout(previewTimer);
       preview.classList.add("touch");
       if (!voiceGuide.speak(word, true) && !preview.querySelector(".voice-unavailable")) {
-        preview.append(node("span", "voice-unavailable", "此浏览器暂无本地发音，请在音色面板查看。"));
+        preview.append(node("span", "voice-unavailable", "此浏览器不支持设备内发音。"));
       }
     });
     preview.append(replay);
@@ -333,6 +335,18 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
   }
   function hidePreview() { clearTimeout(previewTimer); clearTimeout(pronunciationTimer); currentPreview = null; preview.hidden = true; }
 
+  async function sinkIce(word) {
+    const tile = [...board.querySelectorAll(".hex-tile.word-tile")].find((item) => item.dataset.hash === word.hash);
+    if (!tile || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const ripple = node("span", "ice-ripple");
+    ripple.style.left = tile.style.left;
+    ripple.style.top = tile.style.top;
+    tile.parentElement.append(ripple);
+    tile.classList.add("sinking");
+    await new Promise((resolve) => setTimeout(resolve, 320));
+    ripple.remove();
+  }
+
   async function act(word, action) {
     if (busy || results[word.hash] === true || page.status === "done") return;
     busy = true;
@@ -341,6 +355,7 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
         const result = await request(`/api/page/${encodeURIComponent(id)}/mark`, { hash: word.hash, known: true });
         Object.assign(results, result.results);
         sfx.iceTap();
+        await sinkIce(word);
       } else {
         const result = await request(`/api/page/${encodeURIComponent(id)}/raise`, { hash: word.hash });
         Object.assign(results, result.results);

@@ -322,7 +322,8 @@ async function viewSettings(params = new URLSearchParams()) {
         el("label", {}, "模型名称", modelInput, modelOptions)),
       el("div", { class: "ai-actions" }, detectModels, saveAi, returnLink),
       aiMessage,
-      aiHint)
+      aiHint),
+    el("p", { class: "muted" }, el("a", { href: "/vendor/spellophone/NOTICE.txt", target: "_blank", rel: "noopener noreferrer" }, "离线发音开源许可"))
   );
 }
 
