@@ -1,0 +1,10 @@
+.preset-panel { max-width:650px; margin:16px auto; padding:20px; background:#e9faff; color:#174d72; border-radius:22px; }
+.preset-venn { display:block; width:min(100%,420px); margin:auto; cursor:pointer; }
+.preset-region { fill:#9ed9eb; stroke:#fff; stroke-width:2; }
+.preset-region.selected { fill:#ffcc65; }
+.preset-count { text-anchor:middle; font: bold 15px sans-serif; fill:#163d62; pointer-events:none; }
+.preset-regions { display:flex; flex-wrap:wrap; gap:7px; }
+.preset-panel button { font:inherit; padding:8px 12px; border:1px solid #80bcd3; border-radius:12px; background:#f4fcff; color:#174d72; margin:4px; }
+.preset-panel button[aria-pressed=true] { background:#ffcc65; border-color:#b67819; }
+.preset-panel button:focus-visible { outline:3px solid #174d72; }
+.preset-source { font-size:12px; }

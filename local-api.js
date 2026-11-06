@@ -1,5 +1,19 @@
 // All user data stays in this origin's IndexedDB. No application API requests leave the browser.
 const STORE = "ledokol";
+let presetData;
+export async function loadPresets() {
+  presetData ||= fetch(new URL('./presets.json', import.meta.url)).then(r => { if (!r.ok) throw new Error('预设词库加载失败'); return r.json(); }).catch(e => { presetData = undefined; throw e; });
+  return presetData;
+}
+export function mergePresets(existing, presets) {
+  const merged = new Map(existing.map(word => [word.hash, word]));
+  for (const item of presets) {
+    const hash = `en:${item.head}`;
+    const prior = merged.get(hash);
+    merged.set(hash, prior ? { ...prior, presetMask: item.mask } : { hash, lang: 'en', head: item.head, gloss: item.gloss, phonetic: item.phonetic, presetMask: item.mask, tags: ['考试预设'], examples: [] });
+  }
+  return [...merged.values()];
+}
 const defaults = {
   settings: { layerOrder: ["en", "ja", "ru"], mixLanguages: true, wordsPerPage: { en: 8, ja: 8, ru: 8 }, sourceTags: { en: ["starter"], ja: ["starter"], ru: ["starter"] }, pendingThrottle: 1, ai: { endpoint: "http://127.0.0.1:11434/v1", model: "" } },
   mastery: {}, queue: [], seq: 0
@@ -40,7 +54,8 @@ async function write(key, value) {
 }
 async function snapshot() {
   const state = await read("state") || structuredClone(defaults);
-  const lexicon = await read("lexicon") || structuredClone(sample);
+  let lexicon = await read("lexicon") || structuredClone(sample);
+  if (state.settings.englishRegions !== undefined) lexicon = mergePresets(lexicon, await loadPresets());
   return { state, lexicon };
 }
 function detail(word) { return { hash: word.hash, lang: word.lang, head: word.head, gloss: word.gloss, examples: word.examples || [] }; }
@@ -54,7 +69,8 @@ function queueView(state) {
 }
 function choose(state, lexicon, lang, count, exclude) {
   const tags = state.settings.sourceTags[lang] || [];
-  const pool = lexicon.filter((word) => word.lang === lang && word.gloss?.length && word.head && word.hash && (!tags.length || word.tags?.some((tag) => tags.includes(tag))) && !exclude.has(word.hash));
+  const regions = lang === 'en' && Array.isArray(state.settings.englishRegions) ? state.settings.englishRegions : null;
+  const pool = lexicon.filter((word) => word.lang === lang && word.gloss?.length && word.head && word.hash && (regions ? regions.includes(word.presetMask) : (!tags.length || word.tags?.some((tag) => tags.includes(tag)))) && !exclude.has(word.hash));
   pool.sort((a, b) => { const ma = state.mastery[a.hash] || { k: 0, u: 0 }; const mb = state.mastery[b.hash] || { k: 0, u: 0 }; return (mb.u * 2 - mb.k) - (ma.u * 2 - ma.k) || a.head.localeCompare(b.head); });
   return pool.slice(0, count).map((word) => word.hash);
 }
@@ -75,7 +91,14 @@ export async function localRequest(path, body, method = "GET") {
   }
   if (url.pathname === "/api/queue") return queueView(state);
   if (url.pathname === "/api/settings") {
-    if (method === "PUT") { state.settings = { ...state.settings, ...body }; await write("state", state); }
+    if (method === "PUT") {
+      state.settings = { ...state.settings, ...body };
+      if (Array.isArray(body.englishRegions)) {
+        state.settings.englishRegions = [...new Set(body.englishRegions.filter(n => Number.isInteger(n) && n >= 1 && n <= 7))];
+        await write('lexicon', mergePresets(lexicon, await loadPresets()));
+      }
+      await write("state", state);
+    }
     return state.settings;
   }
   if (url.pathname === "/api/book") {

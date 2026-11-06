@@ -2,6 +2,7 @@ import { sfx } from "./sfx.js";
 import { viewIceGame } from "./game.js";
 import { localRequest, exportBackup, importBackup, importWords } from "./local-api.js";
 import { AI_DEFAULTS, aiConfig, listLocalModels } from "./ai.js";
+import { mountPresets } from "./presets.js";
 
 const view = document.getElementById("view");
 const card = document.getElementById("gloss-card");
@@ -176,6 +177,7 @@ async function viewBook(params) {
 
 /* ---------- 设置 ---------- */
 async function viewSettings(params = new URLSearchParams()) {
+  const presetPanel = el("section", { class: "panel" });
   const s = await api.get("/api/settings");
   const num = (lang) => el("input", { type: "number", min: "0", max: "60", value: String(s.wordsPerPage[lang] ?? 0), dataset: { lang, field: "wordsPerPage" } });
   view.textContent = "";
@@ -323,8 +325,10 @@ async function viewSettings(params = new URLSearchParams()) {
       el("div", { class: "ai-actions" }, detectModels, saveAi, returnLink),
       aiMessage,
       aiHint),
-    el("p", { class: "muted" }, el("a", { href: "/vendor/spellophone/NOTICE.txt", target: "_blank", rel: "noopener noreferrer" }, "离线发音开源许可"))
+    presetPanel,
+    el("p", { class: "muted" }, el("a", { href: "./vendor/spellophone/NOTICE.txt", target: "_blank", rel: "noopener noreferrer" }, "离线发音开源许可"))
   );
+  void mountPresets(presetPanel, localRequest);
 }
 
 /* ---------- router ---------- */
