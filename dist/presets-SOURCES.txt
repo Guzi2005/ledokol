@@ -1,0 +1,3 @@
+Source: https://github.com/skywind3000/ECDICT master/ecdict.csv
+License: MIT (see presets-LICENSE.txt)
+Retrieved 2026-11-06. Membership follows the dataset cet4/cet6/ielts tags exactly, without assuming one exam contains another. These are exam study presets, not verified official syllabus editions. IELTS has no fixed official word syllabus represented here.

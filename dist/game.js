@@ -148,23 +148,23 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
       styles.append(button);
     });
     panel.append(styles);
-    const lang = displayLayers[layerIndex].lang;
-    const available = lang === "mix" ? [] : voiceGuide.voices(lang);
-    if (lang === "mix") panel.append(node("span", "voice-note", "混合冰面按每个词的语种自动发音；缺少系统语音时使用站点内置离线发音。"));
-    else if (available.length) {
-      const select = node("select", "voice-select");
-      select.setAttribute("aria-label", "本地语音");
-      available.forEach((voice) => {
-        const option = node("option", "", voice.name);
-        option.value = voice.voiceURI;
-        select.append(option);
-      });
-      select.value = voiceGuide.chosen(lang)?.voiceURI || "";
-      select.addEventListener("change", () => voiceGuide.setVoice(lang, select.value));
-      panel.append(select);
-    } else panel.append(node("span", "voice-note", voiceGuide.supported ? "没有系统语音包时，自动使用站点内置离线发音。" : "当前浏览器不支持语音朗读"));
+    const permission = node("label", "voice-note");
+    const remote = node("input"); remote.type = "checkbox"; remote.checked = voiceGuide.state.allowRemote;
+    remote.addEventListener("change", () => { voiceGuide.setAllowRemote(remote.checked); fillVoicePanel(panel); });
+    permission.append(remote, document.createTextNode("允许联网声线（朗读词会发送给浏览器的语音服务）")); panel.append(permission);
+    const languages = displayLayers[layerIndex].lang === "mix" ? ["en","ja","ru"] : [displayLayers[layerIndex].lang];
+    languages.forEach(lang => {
+      panel.append(node("strong", "voice-note", names[lang]));
+      const select = node("select", "voice-select"); select.setAttribute("aria-label", `${names[lang]}真实声线`);
+      const auto = node("option", "", "自动选择 / 缺包用离线合成"); auto.value = ""; select.append(auto);
+      voiceGuide.voices(lang).forEach(voice => { const option = node("option", "", `${voice.name} · ${voiceGuide.isRemote(voice) ? "联网" : "设备"}`); option.value = voice.voiceURI; select.append(option); });
+      select.value = voiceGuide.state.byLang[lang] || "";
+      select.addEventListener("change", () => { voiceGuide.setVoice(lang,select.value); voiceGuide.preview(lang); });
+      const previewButton = node("button", "game-icon", "▶"); previewButton.type="button"; previewButton.title=`试听${names[lang]}`; previewButton.setAttribute("aria-label",previewButton.title); previewButton.onclick=()=>voiceGuide.preview(lang);
+      panel.append(select,previewButton);
+    });
+    panel.append(node("span", "voice-note", "上方四种为语速音高效果；真实说话人请在声线列表选择。离线后备为基础合成音。"));
     if (voiceGuide.status) panel.append(node("span", "voice-note", voiceGuide.status));
-    panel.append(node("span", "voice-note", "发音在设备内生成，不发送词本。"));
   }
 
   function refreshVoiceMenu() {

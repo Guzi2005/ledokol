@@ -473,9 +473,9 @@ code {
 .hud-choice.left { left: -100px; top: 0; }
 .hud-choice.aimed { background: #ffdd7b; color: #173a5d; border-color: white; transform: translate(-50%,-50%) scale(1.1); }
 @media(max-width:600px) { .hud-choice { width: min(30vw,110px); } .hud-choice.right { left: 80px; } .hud-choice.left { left: -80px; } }
-@font-face { font-family: "Jiangcheng Round"; src: url("/fonts/jiangcheng-round-400.ttf") format("truetype"); font-style: normal; font-weight: 100 900; font-display: swap; }
-html,body,button,input,textarea { cursor: url("/cursor.svg") 8 8, auto; }
-button,a,[role="button"],.hex-tile.word-tile { cursor: url("/cursor.svg") 8 8, pointer; }
+@font-face { font-family: "Jiangcheng Round"; src: url("./fonts/jiangcheng-round-400.ttf") format("truetype"); font-style: normal; font-weight: 100 900; font-display: swap; }
+html,body,button,input,textarea { cursor: url("./cursor.svg") 8 8, auto; }
+button,a,[role="button"],.hex-tile.word-tile { cursor: url("./cursor.svg") 8 8, pointer; }
 .peek-head { flex-basis: 100%; font-size: 18px; }
 .peek-reading,.peek-height { color: #4b7891; font-size: 12px; }
 .peek-meaning { flex-basis: 100%; font-weight: 700; }
@@ -494,7 +494,7 @@ html.game-mode .masthead { display: none; }
 html.game-mode main { width: 100%; max-width: none; height: 100vh; height: 100dvh; margin: 0; padding: 0; overflow: hidden; }
 html.game-mode .game-shell { display: grid; grid-template-rows: auto minmax(0,1fr) auto; gap: 0; width: 100%; height: 100%; min-height: 0; padding: max(8px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left)); border: 0; border-radius: 0; box-shadow: none; background: radial-gradient(ellipse at 50% 45%, #79def2 0%, #38b7da 55%, #167eae 100%); }
 html.game-mode .game-shell { position: relative; isolation: isolate; }
-html.game-mode .game-shell::before { content: ""; position: absolute; z-index: 0; inset: 33% -2% -4%; background: url("/water-mesh.svg") center top / cover no-repeat; opacity: .58; pointer-events: none; animation: sea-sway 9s ease-in-out infinite alternate; }
+html.game-mode .game-shell::before { content: ""; position: absolute; z-index: 0; inset: 33% -2% -4%; background: url("./water-mesh.svg") center top / cover no-repeat; opacity: .58; pointer-events: none; animation: sea-sway 9s ease-in-out infinite alternate; }
 @keyframes sea-sway { from { transform: translate(-.7%,.5%); } to { transform: translate(.7%,-.7%); } }
 html.game-mode .game-top { position: relative; z-index: 2; padding: 2px 0; }
 html.game-mode .game-title { font-size: clamp(20px,3.3vh,30px); }
@@ -523,7 +523,7 @@ html.game-mode .game-quiz.open { position: fixed; z-index: 10; left: 50%; top: 5
 .home-mode .masthead { display: none; }
 .home-mode main { width: 100%; max-width: none; height: 100vh; height: 100dvh; margin: 0; padding: 0; overflow: hidden; }
 .home-scene { position: relative; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; background: radial-gradient(circle at 50% 43%, #b8f4ff 0%, #47bedf 58%, #1479ae 100%); color: #10446b; }
-.home-scene::after { content: ""; position: absolute; inset: 48% -2% -4%; background: url("/water-mesh.svg") center top / cover no-repeat; opacity: .7; pointer-events: none; animation: sea-sway 9s ease-in-out infinite alternate; }
+.home-scene::after { content: ""; position: absolute; inset: 48% -2% -4%; background: url("./water-mesh.svg") center top / cover no-repeat; opacity: .7; pointer-events: none; animation: sea-sway 9s ease-in-out infinite alternate; }
 .home-bookmarks { position: absolute; z-index: 3; top: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-start; gap: clamp(4px,2vw,18px); width: min(95%,700px); justify-content: center; }
 .bookmark { display: grid; place-items: end center; min-width: clamp(68px,18vw,118px); height: clamp(63px,10vh,100px); padding: 0 8px 13px; border: 2px solid #e6fbff; border-top: 0; border-radius: 0 0 18px 18px; background: linear-gradient(#146b9f,#2167ad); box-shadow: 0 8px 12px #0b56846b; color: white; font: inherit; font-size: clamp(15px,2vw,22px); font-weight: 700; text-decoration: none; cursor: pointer; }
 .bookmark-mix { background: linear-gradient(#0b477d,#19599d); }
@@ -576,3 +576,5 @@ html.game-mode .quiz-option { min-height: 42px; }
   html.game-mode .game-quiz.open { padding: 12px; }
   html.game-mode .quiz-options { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
+html.game-mode .game-shell::before,.home-scene::after { inset: -3%; background-position: center; background-size: cover; }
+.voice-panel { max-height: min(75dvh,620px); overflow:auto; }
