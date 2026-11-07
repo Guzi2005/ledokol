@@ -578,3 +578,103 @@ html.game-mode .quiz-option { min-height: 42px; }
 }
 html.game-mode .game-shell::before,.home-scene::after { inset: -3%; background-position: center; background-size: cover; }
 .voice-panel { max-height: min(75dvh,620px); overflow:auto; }
+
+/* Low-poly sea motion and submerged ice in the immersive game. */
+html.game-mode .game-shell::before {
+  inset: -5%;
+  opacity: .68;
+  background-size: 112% 112%;
+  animation: ocean-current 7s ease-in-out infinite alternate;
+  will-change: transform, background-position;
+}
+html.game-mode .game-shell::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -8%;
+  pointer-events: none;
+  opacity: .19;
+  background: url("./water-mesh.svg") 0 0 / 125% 125% repeat;
+  mix-blend-mode: screen;
+  animation: ocean-drift 15s linear infinite;
+}
+@keyframes ocean-current {
+  0% { transform: scale(1.02) translate(-1.2%,.6%); background-position: 48% 45%; }
+  50% { transform: scale(1.06) translate(.7%,-.4%); background-position: 53% 51%; }
+  100% { transform: scale(1.035) translate(1.2%,.7%); background-position: 47% 55%; }
+}
+@keyframes ocean-drift {
+  from { transform: translate3d(-1.5%,0,0) scale(1); }
+  to { transform: translate3d(1.5%,1%,0) scale(1.04); }
+}
+html.game-mode .hex-field { z-index: 1; }
+html.game-mode .sea-surface {
+  position: absolute;
+  z-index: 4;
+  inset: 40% -5% -12%;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, #51d5e86e 0%, #168db58a 17%, #07598b9e 100%),
+    url("./water-mesh.svg") center 0 / 150% 110% repeat-x;
+  background-blend-mode: screen, normal;
+  filter: drop-shadow(0 -3px 3px #d5faff44);
+  clip-path: polygon(0 6%, 10% 1%, 20% 5%, 30% 0, 40% 5%, 50% 1%, 60% 6%, 70% 0, 80% 4%, 90% 1%, 100% 6%, 100% 100%, 0 100%);
+  animation: surface-wave 4.5s ease-in-out infinite alternate, surface-current 11s linear infinite;
+  will-change: clip-path, background-position;
+}
+@keyframes surface-wave {
+  from { clip-path: polygon(0 6%, 10% 1%, 20% 5%, 30% 0, 40% 5%, 50% 1%, 60% 6%, 70% 0, 80% 4%, 90% 1%, 100% 6%, 100% 100%, 0 100%); }
+  to { clip-path: polygon(0 1%, 10% 6%, 20% 0, 30% 5%, 40% 1%, 50% 7%, 60% 0, 70% 5%, 80% 1%, 90% 6%, 100% 0, 100% 100%, 0 100%); }
+}
+@keyframes surface-current {
+  from { background-position: center 0, 0 0; }
+  to { background-position: center 0, 100% 0; }
+}
+.hex-tile.melted,.hex-tile.melted:nth-child(even) {
+  opacity: .42;
+  transform: translate(-50%,-50%) translateY(5px);
+  filter: blur(.65px) saturate(.8);
+  background: linear-gradient(145deg,#77d5ee 0%,#207eae 58%,#12527f 100%);
+  box-shadow: inset 0 5px 12px #073c668c, 0 3px 8px #e2faff25;
+  transition: opacity .3s ease, filter .3s ease;
+}
+.hex-tile.sinking,.hex-tile.sinking:hover,.hex-tile.sinking:focus-visible {
+  z-index: 5;
+  animation: ice-sink .42s cubic-bezier(.45,0,.8,.55) forwards;
+}
+@keyframes ice-sink {
+  0% { transform: translate(-50%,-50%) translateY(calc(var(--height, 0) * -5px)); opacity: 1; filter: brightness(1.25); }
+  30% { opacity: 1; filter: brightness(.85); }
+  100% { transform: translate(-50%,-50%) translateY(calc(var(--tile) * .68)); opacity: .12; filter: brightness(.55) blur(1px); }
+}
+.ice-ripple { animation-duration: .75s; animation-delay: .04s; }
+.game-layer,.quiz-option,.peek-icon,.game-icon,.bookmark,.home-play {
+  transition: transform .16s ease, filter .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+.game-layer:hover,.quiz-option:not(:disabled):hover,.peek-icon:hover,.game-icon:hover,.bookmark:hover,.home-play:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.07);
+}
+.game-layer:focus-visible,.quiz-option:focus-visible,.peek-icon:focus-visible,.game-icon:focus-visible,
+.bookmark:focus-visible,.home-play:focus-visible,.order-icon:focus-visible {
+  outline: 3px solid #ffdf79;
+  outline-offset: 2px;
+}
+@media (max-height: 700px) {
+  html.game-mode .game-top { padding-top: 0; }
+  html.game-mode .game-help { margin: 0 0 4px; }
+  html.game-mode .game-layer { padding: 4px 9px; font-size: 12px; }
+  html.game-mode .hex-field.radius-4 { --tile: min(11vw, calc((100dvh - 190px) / 7.794), 78px); }
+  html.game-mode .hex-field.radius-3 { --tile: min(15vw, calc((100dvh - 190px) / 6.062), 100px); }
+}
+@media (max-width: 600px) {
+  html.game-mode .game-layers { gap: 4px; }
+  html.game-mode .game-layer { padding: 5px 8px; font-size: 12px; }
+  html.game-mode .hex-field.radius-4 { --tile: min(12vw, calc((100dvh - 205px) / 7.794), 66px); }
+  html.game-mode .game-status { padding: 5px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.game-mode .game-shell::before,html.game-mode .game-shell::after,.home-scene::after,.sea-surface { animation: none !important; }
+  .hex-tile,.game-layer,.quiz-option,.peek-icon,.game-icon,.bookmark,.home-play { transition: none; }
+  .hex-tile.sinking,.ice-ripple { animation: none; }
+}
