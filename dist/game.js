@@ -239,6 +239,9 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
     penguin.setAttribute("aria-hidden", "true");
     penguin.append(node("span", "penguin-shadow"), node("span", "penguin-figure", "🐧"));
     field.append(penguin);
+    const seaSurface = node("div", "sea-surface");
+    seaSurface.setAttribute("aria-hidden", "true");
+    field.append(seaSurface);
     board.append(field);
     const caption = node("p", "board-caption", `${names[layer.lang] || layer.lang}冰层 · ${layer.words.length} 个词`);
     board.append(caption);
