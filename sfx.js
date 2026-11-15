@@ -1,4 +1,4 @@
-const MUTE_KEY = "ledok…uted";
+const MUTE_KEY = "ledokol-muted";
 
 let ac = null;
 let master, dry, wetGain;
@@ -8,7 +8,13 @@ function boot() {
   ac = new (window.AudioContext || window.webkitAudioContext)();
   master = ac.createGain();
   master.gain.value = 0.85;
-  master.connect(ac.destination);
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -20;
+  comp.knee.value = 18;
+  comp.ratio.value = 7;
+  comp.attack.value = 0.002;
+  comp.release.value = 0.14;
+  master.connect(comp).connect(ac.destination);
 
   dry = ac.createGain();
   dry.gain.value = 0.8;
@@ -100,18 +106,25 @@ export const sfx = {
   iceTap() {
     if (this.muted) return;
     this.unlock();
-    // A sharp fracture, followed by bright shards and a short icy tail.
-    hiss({ dur: 0.042, gain: 0.35, freq: 2900, q: 3.4, send: 0.2 });
-    hiss({ at: 0.012, dur: 0.085, gain: 0.22, freq: 1050, q: 1.1, send: 0.16 });
-    ring({ at: 0.006, freq: 920, to: 570, dur: 0.17, gain: 0.12, type: "triangle", send: 0.3 });
-    ring({ at: 0.038, freq: 1780, to: 1210, dur: 0.13, gain: 0.075, type: "sine", send: 0.42 });
-    debris({ count: 5, at: 0.025 });
-    hiss({ at: 0.12, dur: 0.12, gain: 0.095, freq: 520, q: 0.7, type: "lowpass", send: 0.18 });
+    // Pickaxe bite: sharp fracture, bright shards, deep crack and a slushy tail.
+    hiss({ dur: 0.04, gain: 0.46, freq: rnd(3000, 3600), q: 5.5, send: 0.22 });
+    hiss({ at: 0.01, dur: 0.09, gain: 0.28, freq: 1050, q: 1.1, send: 0.18 });
+    ring({ at: 0.004, freq: 960, to: 540, dur: 0.17, gain: 0.15, type: "triangle", send: 0.32 });
+    ring({ at: 0.03, freq: 1820, to: 1180, dur: 0.14, gain: 0.09, type: "sine", send: 0.46 });
+    ring({ at: 0.015, freq: 132, to: 70, dur: 0.3, gain: 0.17, type: "sawtooth", send: 0.28 });
+    debris({ count: 6, at: 0.03 });
+    hiss({ at: 0.11, dur: 0.14, gain: 0.11, freq: 480, q: 0.7, type: "lowpass", send: 0.2 });
+    hiss({ at: 0.19, dur: 0.1, gain: 0.07, freq: 2900, q: 2.4, send: 0.5 });
   },
   iceLift() {
     if (this.muted) return;
     this.unlock();
-    hiss({ dur: 0.13, gain: 0.13, freq: 650, q: 0.6, type: "lowpass", send: 0.02 });
+    // Freezing over: a rising shimmer with a thin crystalline seal.
+    hiss({ dur: 0.16, gain: 0.14, freq: 520, q: 0.6, type: "lowpass", sweep: 2.6, send: 0.05 });
+    hiss({ at: 0.02, dur: 0.2, gain: 0.075, freq: 3400, q: 3.2, sweep: 1.8, send: 0.5 });
+    ring({ at: 0.01, freq: 640, to: 1240, dur: 0.22, gain: 0.075, type: "sine", send: 0.45 });
+    ring({ at: 0.09, freq: 1940, to: 2350, dur: 0.16, gain: 0.045, type: "triangle", send: 0.55 });
+    debris({ count: 3, at: 0.16 });
   },
   get muted() {
     return localStorage.getItem(MUTE_KEY) === "1";

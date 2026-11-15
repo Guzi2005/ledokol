@@ -1,0 +1,12 @@
+LEDOKOL bundled vocabulary sources
+
+English exam vocabulary
+- Source: ECDICT (master/ecdict.csv), CET4/CET6/IELTS tags and meanings.
+- License: MIT. See ../presets-SOURCES.txt and ../presets-LICENSE.txt.
+
+Japanese vocabulary
+- Source: OpenJLPT, https://github.com/evanclan/OpenJLPT
+- This adapted vocabulary file is distributed under CC BY-SA 4.0.
+- Attribution: Contains data from OpenJLPT, which uses JMdict and KANJIDIC2 (EDRDG), Jonathan Waller's JLPT lists, and Tatoeba.
+- License: https://creativecommons.org/licenses/by-sa/4.0/
+- Source notice: https://github.com/evanclan/OpenJLPT/blob/main/NOTICE.md

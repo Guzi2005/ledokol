@@ -1,6 +1,10 @@
 // All user data stays in this origin's IndexedDB. No application API requests leave the browser.
 const STORE = "ledokol";
+const BUNDLE_VERSION = 2;
+const BUNDLED_JAPANESE_URL = new URL("./data/openjlpt.jsonl", import.meta.url);
 let presetData;
+let lexiconPromise;
+let lexiconSourceError = "";
 export async function loadPresets() {
   presetData ||= fetch(new URL('./presets.json', import.meta.url)).then(r => { if (!r.ok) throw new Error('预设词库加载失败'); return r.json(); }).catch(e => { presetData = undefined; throw e; });
   return presetData;
@@ -10,12 +14,14 @@ export function mergePresets(existing, presets) {
   for (const item of presets) {
     const hash = `en:${item.head}`;
     const prior = merged.get(hash);
-    merged.set(hash, prior ? { ...prior, presetMask: item.mask } : { hash, lang: 'en', head: item.head, gloss: item.gloss, phonetic: item.phonetic, presetMask: item.mask, tags: ['考试预设'], examples: [] });
+    merged.set(hash, prior
+      ? { ...prior, presetMask: item.mask, tags: [...new Set([...(prior.tags || []), '考试预设'])] }
+      : { hash, lang: 'en', head: item.head, gloss: item.gloss, phonetic: item.phonetic, presetMask: item.mask, tags: ['考试预设'], examples: [] });
   }
   return [...merged.values()];
 }
 const defaults = {
-  settings: { layerOrder: ["en", "ja", "ru"], mixLanguages: true, wordsPerPage: { en: 8, ja: 8, ru: 8 }, sourceTags: { en: ["starter"], ja: ["starter"], ru: ["starter"] }, pendingThrottle: 1, ai: { endpoint: "http://127.0.0.1:11434/v1", model: "" } },
+  settings: { layerOrder: ["en", "ja", "ru"], mixLanguages: true, wordsPerPage: { en: 8, ja: 8, ru: 8 }, sourceTags: { en: ["考试预设", "starter"], ja: ["N2", "N3", "N4", "N5", "starter"], ru: ["starter"] }, pendingThrottle: 1, ai: { endpoint: "http://127.0.0.1:11434/v1", model: "" } },
   mastery: {}, queue: [], seq: 0
 };
 const starter = {
@@ -52,9 +58,79 @@ async function write(key, value) {
     tx.onerror = () => reject(tx.error);
   });
 }
+function normalizeState(saved) {
+  const state = { ...structuredClone(defaults), ...(saved || {}) };
+  state.settings = { ...structuredClone(defaults.settings), ...(saved?.settings || {}) };
+  state.settings.wordsPerPage = { ...defaults.settings.wordsPerPage, ...(saved?.settings?.wordsPerPage || {}) };
+  state.settings.sourceTags = { ...structuredClone(defaults.settings.sourceTags), ...(saved?.settings?.sourceTags || {}) };
+  state.mastery ||= {};
+  state.queue ||= [];
+  state.seq ||= 0;
+  for (const lang of ["en", "ja", "ru"]) {
+    const tags = state.settings.sourceTags[lang];
+    if (Array.isArray(tags) && tags.length === 1 && tags[0] === "starter") {
+      state.settings.sourceTags[lang] = [...defaults.settings.sourceTags[lang]];
+    }
+  }
+  return state;
+}
+async function loadLexicon() {
+  if (!lexiconPromise) {
+    lexiconPromise = (async () => {
+      const [cached, version] = await Promise.all([read("lexicon"), read("lexiconBundleVersion")]);
+      if (Array.isArray(cached) && version === BUNDLE_VERSION) {
+        lexiconSourceError = "";
+        return cached;
+      }
+      try {
+        const [presets, japaneseResponse] = await Promise.all([
+          loadPresets(),
+          fetch(BUNDLED_JAPANESE_URL)
+        ]);
+        if (!japaneseResponse.ok) throw new Error(`日语词库 HTTP ${japaneseResponse.status}`);
+        const japaneseText = await japaneseResponse.text();
+        const japanese = japaneseText.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+        const bundled = new Map(mergePresets(sample, presets).map((word) => [word.hash, word]));
+        for (const word of japanese) {
+          const prior = bundled.get(word.hash);
+          if (prior) {
+            Object.assign(prior, word, { hash: prior.hash, tags: [...new Set([...(word.tags || []), ...(prior.tags || [])])], gloss: prior.gloss?.length ? prior.gloss : word.gloss, examples: prior.examples?.length ? prior.examples : word.examples });
+          } else bundled.set(word.hash, word);
+        }
+        if (!bundled.size) throw new Error("词库文件为空");
+        // Refresh the public word base while keeping user edits keyed by the
+        // same word. Keep the original hash so old mastery and queue records stay linked.
+        const identity = (word) => `${word.lang}:${String(word.head || "").trim()}`;
+        const merged = new Map([...bundled.values()].map((word) => [identity(word), word]));
+        for (const word of cached || []) {
+          const key = identity(word);
+          const base = merged.get(key);
+          if (!base) { merged.set(key, word); continue; }
+          const custom = word.tags?.includes("个人词本");
+          const combined = custom ? { ...base, ...word } : { ...word, ...base };
+          combined.hash = word.hash || base.hash;
+          combined.tags = [...new Set([...(base.tags || []), ...(word.tags || [])])];
+          if ((word.examples || []).length > (base.examples || []).length) combined.examples = word.examples;
+          if ((word.phrases || []).length > (base.phrases || []).length) combined.phrases = word.phrases;
+          merged.set(key, combined);
+        }
+        const full = [...merged.values()];
+        await write("lexicon", full);
+        await write("lexiconBundleVersion", BUNDLE_VERSION);
+        lexiconSourceError = "";
+        return full;
+      } catch (error) {
+        lexiconSourceError = `网站内置词库暂时无法载入（${error.message}）；保留当前浏览器中的词库`;
+        return Array.isArray(cached) ? cached : structuredClone(sample);
+      }
+    })();
+  }
+  return lexiconPromise;
+}
 async function snapshot() {
-  const state = await read("state") || structuredClone(defaults);
-  let lexicon = await read("lexicon") || structuredClone(sample);
+  const [savedState, baseLexicon] = await Promise.all([read("state"), loadLexicon()]);
+  const state = normalizeState(savedState);
+  let lexicon = baseLexicon;
   if (state.settings.englishRegions !== undefined) lexicon = mergePresets(lexicon, await loadPresets());
   return { state, lexicon };
 }
@@ -87,7 +163,7 @@ export async function localRequest(path, body, method = "GET") {
   if (url.pathname === "/api/state") {
     const byLang = {};
     lexicon.forEach((word) => byLang[word.lang] = (byLang[word.lang] || 0) + 1);
-    return { settings: state.settings, lexicon: { empty: !lexicon.length, byLang }, queue: { pending: state.queue.filter((page) => page.status === "pending").length, total: state.queue.length, throttle: state.settings.pendingThrottle } };
+    return { settings: state.settings, lexicon: { empty: !lexicon.length, byLang, sourceError: lexiconSourceError }, queue: { pending: state.queue.filter((page) => page.status === "pending").length, total: state.queue.length, throttle: state.settings.pendingThrottle } };
   }
   if (url.pathname === "/api/queue") return queueView(state);
   if (url.pathname === "/api/settings") {
@@ -95,7 +171,9 @@ export async function localRequest(path, body, method = "GET") {
       state.settings = { ...state.settings, ...body };
       if (Array.isArray(body.englishRegions)) {
         state.settings.englishRegions = [...new Set(body.englishRegions.filter(n => Number.isInteger(n) && n >= 1 && n <= 7))];
-        await write('lexicon', mergePresets(lexicon, await loadPresets()));
+        lexicon = mergePresets(lexicon, await loadPresets());
+        await write('lexicon', lexicon);
+        lexiconPromise = Promise.resolve(lexicon);
       }
       await write("state", state);
     }
@@ -167,18 +245,21 @@ export async function importBackup(payload) {
   }
   if (!payload || !Array.isArray(payload.lexicon) || !payload.state?.settings || !Array.isArray(payload.state.queue)) throw new Error("备份格式不正确");
   await write("lexicon", payload.lexicon); await write("state", payload.state);
+  lexiconPromise = undefined;
   return "完整备份已导入";
 }
 export async function importWords(text, filename = "") {
-  const existing = await read("lexicon") || structuredClone(sample);
+  const existing = await loadLexicon();
   let rows;
   if (filename.endsWith(".json")) { const parsed = JSON.parse(text); rows = Array.isArray(parsed) ? parsed : parsed.lexicon; }
   else if (filename.endsWith(".jsonl")) rows = text.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
   else rows = text.split(/\r?\n/).filter(Boolean).map((line) => { const [lang,head,gloss,reading] = line.split("\t"); return { lang,head,gloss:[gloss],reading,tags:["个人词本"] }; });
   if (!Array.isArray(rows)) throw new Error("词表格式不正确");
-  const normalized = rows.filter((word) => ["en","ja","ru"].includes(word.lang) && word.head && (Array.isArray(word.gloss) ? word.gloss.length : word.gloss)).map((word) => ({ ...word, hash:word.hash || `${word.lang}:${word.head}`, gloss:Array.isArray(word.gloss) ? word.gloss : [String(word.gloss)], tags:word.tags?.length ? word.tags : ["个人词本"] }));
+  const normalized = rows.filter((word) => ["en","ja","ru"].includes(word.lang) && word.head && (Array.isArray(word.gloss) ? word.gloss.length : word.gloss)).map((word) => ({ ...word, hash:word.hash || `${word.lang}:${word.head}`, gloss:Array.isArray(word.gloss) ? word.gloss : [String(word.gloss)], tags:[...new Set([...(word.tags || []), "个人词本"])] }));
   const merged = new Map(existing.map((word)=>[word.hash,word])); normalized.forEach((word)=>merged.set(word.hash,word));
-  await write("lexicon",[...merged.values()]);
+  const nextLexicon = [...merged.values()];
+  await write("lexicon",nextLexicon);
+  lexiconPromise = Promise.resolve(nextLexicon);
   const state = await read("state") || structuredClone(defaults);
   for (const lang of ["en","ja","ru"]) if (normalized.some((word)=>word.lang===lang) && !state.settings.sourceTags[lang].includes("个人词本")) state.settings.sourceTags[lang].push("个人词本");
   await write("state",state); return normalized.length;

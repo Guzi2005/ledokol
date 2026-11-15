@@ -1,5 +1,6 @@
-import { createVoiceGuide, voiceStyles } from "./voice.js";
+import { createVoiceGuide } from "./voice.js";
 import { generateMemoryStory } from "./ai.js";
+import { helmIcon } from "./icons.js";
 
 const names = { en: "英语", ja: "日语", ru: "俄语", mix: "多语种" };
 
@@ -24,6 +25,29 @@ function choicesFor(word, words) {
   return [...ordered.slice(seed % 4), ...ordered.slice(0, seed % 4)];
 }
 
+const HEX_NEIGHBORS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+const cellKey = ({ q, r }) => `${q},${r}`;
+
+export function detachedDecorativeCells(cells, removedWordHashes = new Set(), collapsedCells = new Set()) {
+  const byKey = new Map(cells.map((cell) => [cellKey(cell), cell]));
+  const center = byKey.get("0,0");
+  if (!center || removedWordHashes.has(center.word?.hash)) return [];
+  const reachable = new Set(["0,0"]);
+  const queue = [center];
+  for (let index = 0; index < queue.length; index++) {
+    const cell = queue[index];
+    for (const [dq, dr] of HEX_NEIGHBORS) {
+      const next = byKey.get(`${cell.q + dq},${cell.r + dr}`);
+      if (!next) continue;
+      const key = cellKey(next);
+      if (reachable.has(key) || collapsedCells.has(key) || removedWordHashes.has(next.word?.hash)) continue;
+      reachable.add(key);
+      queue.push(next);
+    }
+  }
+  return cells.filter((cell) => !cell.word && !collapsedCells.has(cellKey(cell)) && !reachable.has(cellKey(cell)));
+}
+
 export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
   view.replaceChildren(node("p", "muted", "正在铺冰面…"));
   let page;
@@ -35,6 +59,7 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
   const voiceGuide = createVoiceGuide();
   voiceGuide.onStatus(() => refreshVoiceMenu());
   const allWords = page.layers.flatMap((layer) => layer.words);
+  void voiceGuide.prepare(allWords);
   const languages = [...new Set(allWords.map((word) => word.lang).filter((lang) => names[lang]))];
   const displayLayers = [{ lang: "mix", words: allWords }, ...languages.map((lang) => ({ lang, words: allWords.filter((word) => word.lang === lang) }))];
   let layerIndex = Math.max(0, displayLayers.findIndex((layer) => layer.lang === initialView));
@@ -42,6 +67,8 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
   let busy = false;
   const shell = node("section", "game-shell");
   const heading = node("div", "game-top");
+  const seaSurface = node("div", "sea-surface");
+  seaSurface.setAttribute("aria-hidden", "true");
   const board = node("div", "game-board-wrap");
   const status = node("div", "game-status");
   const quiz = node("div", "game-quiz");
@@ -60,7 +87,7 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
       window.removeEventListener("hashchange", onLeavePage);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("pointerdown", onOutsidePreview);
-      window.speechSynthesis?.removeEventListener?.("voiceschanged", refreshVoiceMenu);
+      window.speechSynthesis?.removeEventListener?.("voiceschanged", onVoicesChanged);
     }
   };
   const onResize = () => {
@@ -75,12 +102,14 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
     if (!preview.hidden && preview.classList.contains("touch") && !preview.contains(event.target) && !event.target.closest?.(".hex-tile")) hidePreview();
   };
   document.addEventListener("pointerdown", onOutsidePreview);
-  shell.append(heading, board, status, quiz, preview, hud);
+  shell.append(heading, seaSurface, board, status, quiz, preview, hud);
   view.replaceChildren(shell);
 
   const marked = (word) => Object.hasOwn(results, word.hash);
   const completed = (layer) => layer.words.every(marked);
   const total = allWords.length;
+  const celebrated = new Set(languages.filter((lang) => allWords.filter((word) => word.lang === lang).every(marked)));
+  const collapsedByLayer = new Map();
 
   function stats() {
     const answered = Object.keys(results).length;
@@ -124,46 +153,58 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
     });
     const chooseVoice = node("button", "game-icon", "🎙");
     chooseVoice.type = "button";
-    chooseVoice.title = "选择音色";
+    chooseVoice.title = "选择发音声线";
     chooseVoice.setAttribute("aria-label", chooseVoice.title);
     const voicePanel = node("div", "voice-panel");
     voicePanel.hidden = true;
     chooseVoice.addEventListener("click", () => {
       voicePanel.hidden = !voicePanel.hidden;
-      if (!voicePanel.hidden) fillVoicePanel(voicePanel);
+      if (!voicePanel.hidden) { hidePreview(); hideHud(); fillVoicePanel(voicePanel); }
     });
     controls.append(toggleVoice, chooseVoice);
+    const toggleSfx = node("button", `game-icon sfx-toggle ${sfx.muted ? "off" : ""}`, "❄");
+    toggleSfx.type = "button";
+    toggleSfx.title = sfx.muted ? "开启敲冰音效" : "关闭敲冰音效";
+    toggleSfx.setAttribute("aria-label", toggleSfx.title);
+    toggleSfx.setAttribute("aria-pressed", String(!sfx.muted));
+    toggleSfx.addEventListener("click", () => {
+      const muted = sfx.toggle();
+      toggleSfx.classList.toggle("off", muted);
+      toggleSfx.title = muted ? "开启敲冰音效" : "关闭敲冰音效";
+      toggleSfx.setAttribute("aria-label", toggleSfx.title);
+      toggleSfx.setAttribute("aria-pressed", String(!muted));
+      if (!muted) sfx.iceTap();
+    });
+    controls.prepend(toggleSfx);
     heading.append(exit, title, subtitle, tabs, controls, voicePanel);
   }
 
   function fillVoicePanel(panel) {
     panel.replaceChildren(node("strong", "voice-panel-title", `${names[displayLayers[layerIndex].lang]}发音`));
-    const styles = node("div", "voice-styles");
-    voiceStyles.forEach((style) => {
-      const button = node("button", `voice-style game-icon ${voiceGuide.state.style === style.id ? "active" : ""}`, style.icon);
-      button.type = "button";
-      button.title = style.label;
-      button.setAttribute("aria-label", `${style.label}音色`);
-      button.addEventListener("click", () => { voiceGuide.setStyle(style.id); fillVoicePanel(panel); });
-      styles.append(button);
-    });
-    panel.append(styles);
     const permission = node("label", "voice-note");
     const remote = node("input"); remote.type = "checkbox"; remote.checked = voiceGuide.state.allowRemote;
-    remote.addEventListener("change", () => { voiceGuide.setAllowRemote(remote.checked); fillVoicePanel(panel); });
-    permission.append(remote, document.createTextNode("允许联网声线（朗读词会发送给浏览器的语音服务）")); panel.append(permission);
+    remote.addEventListener("change", () => { voiceGuide.setAllowRemote(remote.checked); void voiceGuide.prepare(allWords); fillVoicePanel(panel); });
+    permission.append(remote, document.createTextNode("允许把当前词形发送给在线语音服务以使用自然发音（默认关闭）")); panel.append(permission);
     const languages = displayLayers[layerIndex].lang === "mix" ? ["en","ja","ru"] : [displayLayers[layerIndex].lang];
     languages.forEach(lang => {
       panel.append(node("strong", "voice-note", names[lang]));
-      const select = node("select", "voice-select"); select.setAttribute("aria-label", `${names[lang]}真实声线`);
-      const auto = node("option", "", "自动选择 / 缺包用离线合成"); auto.value = ""; select.append(auto);
-      voiceGuide.voices(lang).forEach(voice => { const option = node("option", "", `${voice.name} · ${voiceGuide.isRemote(voice) ? "联网" : "设备"}`); option.value = voice.voiceURI; select.append(option); });
+      const select = node("select", "voice-select"); select.setAttribute("aria-label", `${names[lang]}声线`);
+      const auto = node("option", "", "自动选择（优先自然语音）"); auto.value = ""; select.append(auto);
+      voiceGuide.voices(lang).forEach(voice => {
+        const tags = [voiceGuide.isRemote(voice) ? "在线" : "设备"];
+        if (voiceGuide.isNatural(voice)) tags.push("自然");
+        if (voiceGuide.isYoung(voice)) tags.push("少年感");
+        const option = node("option", "", `${voice.name} · ${tags.join(" · ")}`);
+        option.value = voice.voiceURI; select.append(option);
+      });
       select.value = voiceGuide.state.byLang[lang] || "";
-      select.addEventListener("change", () => { voiceGuide.setVoice(lang,select.value); voiceGuide.preview(lang); });
+      select.addEventListener("change", () => { voiceGuide.setVoice(lang,select.value); void voiceGuide.prepare(allWords); voiceGuide.preview(lang); });
       const previewButton = node("button", "game-icon", "▶"); previewButton.type="button"; previewButton.title=`试听${names[lang]}`; previewButton.setAttribute("aria-label",previewButton.title); previewButton.onclick=()=>voiceGuide.preview(lang);
       panel.append(select,previewButton);
     });
-    panel.append(node("span", "voice-note", "上方四种为语速音高效果；真实说话人请在声线列表选择。离线后备为基础合成音。"));
+    panel.append(node("span", "voice-note", voiceGuide.state.allowRemote
+      ? "已允许使用在线语音；所选单词会发送给语音服务。断网时使用设备语音。"
+      : "目前只用设备语音，词汇不会发往外部服务；缺少语音包时，可在同意发送词形后开启在线语音。"));
     if (voiceGuide.status) panel.append(node("span", "voice-note", voiceGuide.status));
   }
 
@@ -171,7 +212,8 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
     const panel = heading.querySelector(".voice-panel");
     if (panel && !panel.hidden) fillVoicePanel(panel);
   }
-  window.speechSynthesis?.addEventListener?.("voiceschanged", refreshVoiceMenu);
+  const onVoicesChanged = () => { void voiceGuide.prepare(allWords); refreshVoiceMenu(); };
+  window.speechSynthesis?.addEventListener?.("voiceschanged", onVoicesChanged);
 
   function renderBoard() {
     board.replaceChildren();
@@ -189,11 +231,27 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
     }
     const slots = cells.filter(({ q, r }) => q !== 0 || r !== 0);
     layer.words.forEach((word, index) => { slots[(index * 11) % slots.length].word = word; });
+    const collapsed = collapsedByLayer.get(layer.lang) || new Set();
+    collapsedByLayer.set(layer.lang, collapsed);
+    const removedWords = new Set(layer.words.filter((word) => results[word.hash] === true).map((word) => word.hash));
+    const newlyDetached = detachedDecorativeCells(cells, removedWords, collapsed);
+    const newlyDetachedKeys = new Set(newlyDetached.map(cellKey));
+    newlyDetached.forEach((cell) => collapsed.add(cellKey(cell)));
+    const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     for (const { q, r, word } of cells) {
-        const tile = node("button", `hex-tile ${word ? "word-tile" : "decorative"} ${q === 0 && r === 0 ? "center-ice" : ""}`);
+        const key = `${q},${r}`;
+        const justFell = !reduceMotion && newlyDetachedKeys.has(key);
+        if (!word && collapsed.has(key) && !justFell) continue;
+        const tile = node("button", `hex-tile ${word ? "word-tile" : "decorative"} ${q === 0 && r === 0 ? "center-ice" : ""} ${justFell ? "ice-collapsing" : ""}`);
         tile.type = "button";
         tile.style.left = `${50 + (0.75 * q / boardColumns) * 100}%`;
         tile.style.top = `${50 + ((r + q / 2) / boardRows) * 100}%`;
+        if (justFell) {
+          tile.disabled = true;
+          tile.setAttribute("aria-hidden", "true");
+          tile.style.setProperty("--fall-delay", `${(Math.abs(q * 7 + r * 11) % 7) * 24}ms`);
+          tile.addEventListener("animationend", (event) => { if (event.animationName === "ice-loose-fall") tile.remove(); });
+        }
         if (word) {
           tile.textContent = word.head;
           tile.dataset.hash = word.hash;
@@ -239,9 +297,6 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
     penguin.setAttribute("aria-hidden", "true");
     penguin.append(node("span", "penguin-shadow"), node("span", "penguin-figure", "🐧"));
     field.append(penguin);
-    const seaSurface = node("div", "sea-surface");
-    seaSurface.setAttribute("aria-hidden", "true");
-    field.append(seaSurface);
     board.append(field);
     const caption = node("p", "board-caption", `${names[layer.lang] || layer.lang}冰层 · ${layer.words.length} 个词`);
     board.append(caption);
@@ -294,23 +349,24 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
     currentPreview = { word, touch, tile };
     clearTimeout(previewTimer);
     clearTimeout(pronunciationTimer);
-    if (tile) {
-      const rect = tile.getBoundingClientRect();
-      const bubbleWidth = Math.min(innerWidth * 0.88, 310);
-      const halfWidth = bubbleWidth / 2;
-      const tileCenter = rect.left + rect.width / 2;
-      const centerX = Math.max(halfWidth + 8, Math.min(innerWidth - halfWidth - 8, tileCenter));
-      const below = rect.top < 160;
-      preview.style.left = `${centerX}px`;
-      preview.style.top = `${below ? rect.bottom + 12 : rect.top - 12}px`;
-      preview.style.setProperty("--tail-x", `${Math.max(24, Math.min(bubbleWidth - 24, tileCenter - centerX + halfWidth))}px`);
-      preview.classList.toggle("below", below);
-    }
     preview.replaceChildren();
     preview.classList.toggle("touch", touch);
     preview.append(node("strong", "peek-head", word.head));
     if (word.reading || word.phonetic) preview.append(node("span", "peek-reading", [word.reading, word.phonetic].filter(Boolean).join(" · ")));
     preview.append(node("span", "peek-meaning", (word.gloss || []).join("；") || "暂无释义"));
+    const examples = (word.examples || []).filter((item) => item?.t).slice(0, 2);
+    const phrases = (word.phrases || []).filter((item) => item?.t).slice(0, 3);
+    if (examples.length || phrases.length || word.memory) {
+      const extras = node("div", "peek-extras");
+      for (const example of examples) {
+        const row = node("p", "peek-example", example.t);
+        if (example.cn) row.append(node("span", "peek-example-cn", example.cn));
+        extras.append(row);
+      }
+      if (phrases.length) extras.append(node("p", "peek-phrase", `短语：${phrases.map((phrase) => `${phrase.t}${phrase.cn ? `（${phrase.cn}）` : ""}`).join("；")}`));
+      if (word.memory) extras.append(node("p", "peek-memory", `记忆：${word.memory}`));
+      preview.append(extras);
+    }
     if (results[word.hash] === false) preview.append(node("span", "peek-height", `已加厚 ${heights[word.hash] || 1} 层`));
     const replay = node("button", "peek-icon", "🔊");
     replay.type = "button";
@@ -334,6 +390,18 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
       actions.append(hit, lift); preview.append(actions);
     }
     preview.hidden = false;
+    if (tile) {
+      const rect = tile.getBoundingClientRect();
+      const bubbleWidth = Math.min(innerWidth * 0.88, 310);
+      const halfWidth = bubbleWidth / 2;
+      const tileCenter = rect.left + rect.width / 2;
+      const centerX = Math.max(halfWidth + 8, Math.min(innerWidth - halfWidth - 8, tileCenter));
+      const below = rect.top < preview.getBoundingClientRect().height + 24;
+      preview.style.left = `${centerX}px`;
+      preview.style.top = `${below ? rect.bottom + 12 : rect.top - 12}px`;
+      preview.style.setProperty("--tail-x", `${Math.max(24, Math.min(bubbleWidth - 24, tileCenter - centerX + halfWidth))}px`);
+      preview.classList.toggle("below", below);
+    }
     if (autoSpeak) pronunciationTimer = setTimeout(() => voiceGuide.speak(word), 130);
   }
   function hidePreview() { clearTimeout(previewTimer); clearTimeout(pronunciationTimer); currentPreview = null; preview.hidden = true; }
@@ -367,18 +435,40 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
       }
       hidePreview(); hideHud();
       renderHeading(); renderBoard(); stats();
-      if (allWords.every(marked)) { busy = false; await finish(); }
+      if (allWords.every(marked)) { busy = false; await finish(); return; }
+      for (const lang of languages) {
+        if (celebrated.has(lang)) continue;
+        if (allWords.filter((word) => word.lang === lang).every(marked)) {
+          celebrated.add(lang);
+          sfx.shatter();
+          setTimeout(() => sfx.penguin(), 280);
+        }
+      }
     } catch (error) {
       preview.replaceChildren(node("span", "game-error", `保存失败：${error.message}`));
       preview.hidden = false;
     } finally { busy = false; }
   }
-  const knock = (word) => { if (!sfx.muted) sfx.unlock(); return act(word, "knock"); };
+  const knock = (word) => {
+    const tile = [...board.querySelectorAll(".hex-tile.word-tile")].find((item) => item.dataset.hash === word.hash);
+    if (tile && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      tile.classList.remove("hammer-strike");
+      void tile.offsetWidth;
+      tile.classList.add("hammer-strike");
+      tile.addEventListener("animationend", () => tile.classList.remove("hammer-strike"), { once: true });
+    }
+    if (!sfx.muted) sfx.unlock();
+    return act(word, "knock");
+  };
   const raise = (word) => { if (!sfx.muted) sfx.unlock(); return act(word, "raise"); };
 
-  async function finish() {
+  async function finish(celebrate = true) {
     if (busy) return;
     busy = true;
+    if (celebrate) {
+      sfx.shatter();
+      setTimeout(() => sfx.fanfare(), 340);
+    }
     quiz.replaceChildren(node("p", "muted", "正在结算…"));
     try {
       const result = await request(`/api/page/${encodeURIComponent(id)}/finish`, {});
@@ -399,7 +489,8 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
         generate.type = "button";
         generate.title = result.story ? "重新生成记忆故事" : "生成记忆故事";
         generate.setAttribute("aria-label", generate.title);
-        const configure = node("a", "result-icon settings-plain", "⚙");
+        const configure = node("a", "result-icon settings-plain");
+        configure.append(helmIcon());
         configure.href = `#/settings?return=${encodeURIComponent(`page/${id}`)}`;
         configure.title = "配置本机 AI";
         configure.setAttribute("aria-label", configure.title);
@@ -429,7 +520,7 @@ export async function viewIceGame(id, view, sfx, request, initialView = "mix") {
   }
 
   function render() { renderHeading(); renderBoard(); stats(); hidePreview(); hideHud(); quiz.classList.remove("open"); quiz.replaceChildren(); }
-  if (page.status === "done" || page.layers.every(completed)) await finish();
+  if (page.status === "done" || page.layers.every(completed)) await finish(false);
   else {
     render();
   }

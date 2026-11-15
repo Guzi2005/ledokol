@@ -3,9 +3,11 @@ import { viewIceGame } from "./game.js";
 import { localRequest, exportBackup, importBackup, importWords } from "./local-api.js";
 import { AI_DEFAULTS, aiConfig, listLocalModels } from "./ai.js";
 import { mountPresets } from "./presets.js";
+import { helmIcon } from "./icons.js";
 
 const view = document.getElementById("view");
 const card = document.getElementById("gloss-card");
+const gameCursor = document.getElementById("game-cursor");
 
 const LANG_NAME = { en: "英语", ja: "日语", ru: "俄语" };
 const gameView = () => sessionStorage.getItem("ledokol-game-view") || "mix";
@@ -88,41 +90,85 @@ function hideGloss() {
 async function viewHome() {
   const [st, q] = await Promise.all([api.get("/api/state"), api.get("/api/queue")]);
   const pending = q.pending || [];
-  const activeOrder = [...new Set((st.settings.layerOrder || []).filter((lang) => LANG_NAME[lang]))];
-  const selected = activeOrder.includes(gameView()) ? gameView() : "mix";
-  const bookmarkOrder = ["mix", ...activeOrder];
+  const allLangs = Object.keys(LANG_NAME);
+  const enabled = [...new Set((st.settings.layerOrder || []).filter((lang) => LANG_NAME[lang]))];
+  let pool = new Set(enabled.length ? enabled : allLangs);
   const scene = el("section", { class: "home-scene" });
-  const subtitle = el("p", { class: "home-subtitle" }, selected === "mix" ? "多语种混合冰面" : `${LANG_NAME[selected]}冰面 · 随时切换语种`);
-  const bookmarks = el("nav", { class: "home-bookmarks", "aria-label": "切换冰面语种" },
-    ...bookmarkOrder.map((lang) => el("button", { type: "button", class: `bookmark bookmark-${lang} ${lang === selected ? "active" : ""}`, "aria-pressed": lang === selected ? "true" : "false", onclick: () => {
-      sessionStorage.setItem("ledokol-game-view", lang);
-      for (const tab of bookmarks.querySelectorAll(".bookmark")) {
-        const active = tab.dataset.lang === lang;
-        tab.classList.toggle("active", active);
-        tab.setAttribute("aria-pressed", String(active));
-      }
-      subtitle.textContent = lang === "mix" ? "多语种混合冰面" : `${LANG_NAME[lang]}冰面 · 随时切换语种`;
-    }, dataset: { lang } }, lang === "mix" ? "混合" : LANG_NAME[lang])),
-    el("a", { href: "#/settings", class: "home-settings", "aria-label": "设置", title: "设置" }, "⚙")
-  );
+  const subtitle = el("p", { class: "home-subtitle" });
+  const bookmarks = el("nav", { class: "home-bookmarks", "aria-label": "下拉语种书签加入本次的池子" });
+  const tabs = new Map();
+  for (const lang of allLangs) {
+    const tab = el("button", { type: "button", class: `bookmark bookmark-${lang}`, dataset: { lang } }, LANG_NAME[lang]);
+    tab.addEventListener("click", () => toggle(lang));
+    tabs.set(lang, tab);
+    bookmarks.append(tab);
+  }
+  const allIn = el("button", { type: "button", class: "home-all-in", "aria-label": "All In：下拉全部语种书签", title: "All In：把全部语言下拉进本次的池子" }, "All In");
+  allIn.addEventListener("click", () => { if (pool.size < allLangs.length) void apply(new Set(allLangs)); });
+  bookmarks.append(el("div", { class: "home-actions" },
+    allIn,
+    el("a", { href: "#/settings", class: "home-settings", "aria-label": "设置", title: "设置" }, helmIcon())
+  ));
+
+  function chosen() {
+    return [...new Set([...(st.settings.layerOrder || []), ...allLangs])].filter((lang) => LANG_NAME[lang] && pool.has(lang));
+  }
+  function sync() {
+    const langs = chosen();
+    subtitle.textContent = `本次的池子：${langs.map((lang) => LANG_NAME[lang]).join(" · ")}`;
+    for (const [lang, tab] of tabs) {
+      const on = pool.has(lang);
+      tab.classList.toggle("active", on);
+      tab.setAttribute("aria-pressed", String(on));
+      tab.title = on ? `${LANG_NAME[lang]}已下拉，点击收起` : `${LANG_NAME[lang]}已收起，点击下拉加入`;
+    }
+    const all = langs.length === allLangs.length;
+    allIn.classList.toggle("active", all);
+    allIn.setAttribute("aria-pressed", String(all));
+  }
+  async function apply(next) {
+    pool = next;
+    const layerOrder = chosen();
+    st.settings.layerOrder = layerOrder;
+    st.settings.mixLanguages = layerOrder.length > 1;
+    sync();
+    try { await api.put("/api/settings", { layerOrder, mixLanguages: st.settings.mixLanguages }); }
+    catch (error) { toast(`保存失败：${error.message}`); }
+  }
+  function toggle(lang) {
+    const next = new Set(pool);
+    if (next.has(lang)) {
+      if (next.size === 1) return toast("池子至少要保留一种语言");
+      next.delete(lang);
+    } else next.add(lang);
+    void apply(next);
+  }
+  const play = pending.length ? () => {
+    const page = pending[0];
+    const layers = page.layers.map((layer) => layer.lang).filter((lang) => LANG_NAME[lang]);
+    location.hash = pageLink(page.id, layers.length === 1 ? layers[0] : "mix");
+  } : async () => {
+    sfx.unlock();
+    sfx.voyage();
+    const layerOrder = chosen();
+    await api.put("/api/settings", { layerOrder, mixLanguages: layerOrder.length > 1 });
+    const res = await api.post("/api/enqueue", {});
+    if (res.silent) return toast(`积压 ${res.pending} 页 ≥ 上限 ${res.throttle}：静默唤醒`);
+    if (res.empty) return toast("词库没有可用词条");
+    const layers = res.page.layers.map((layer) => layer.lang).filter((lang) => LANG_NAME[lang]);
+    location.hash = pageLink(res.page.id, layers.length === 1 ? layers[0] : "mix");
+  };
   const hero = el("div", { class: "home-hero" },
     el("div", { class: "home-ice", "aria-hidden": "true" }, el("span", { class: "home-penguin-shadow" }), el("span", { class: "home-penguin-figure" }, "🐧")),
     el("p", { class: "home-kicker" }, "LEDOKOL"),
     el("h1", {}, "敲开冰面，记住世界"),
     subtitle,
-    el("button", { class: "home-play", onclick: pending[0] ? () => location.hash = pageLink(pending[0].id) : sail }, pending.length ? "继续敲冰  ▶" : "开始敲冰  ▶"),
-    el("p", { class: "home-progress" }, `本地词库 ${Object.values(st.lexicon.byLang || {}).reduce((a,b)=>a+b,0)} 词 · ${pending.length ? "有未完成冰层" : "准备好出发"}`)
+    el("button", { class: "home-play", onclick: play }, pending.length ? "继续敲冰  ▶" : "开始敲冰  ▶"),
+    el("p", { class: "home-progress" }, st.lexicon.sourceError || `内置词库 ${Object.values(st.lexicon.byLang || {}).reduce((a,b)=>a+b,0).toLocaleString()} 词 · ${pending.length ? "有未完成冰层" : "准备好出发"}`)
   );
   scene.append(bookmarks, hero);
   view.replaceChildren(scene);
-}
-async function sail() {
-  sfx.unlock();
-  sfx.voyage();
-  const res = await api.post("/api/enqueue", {});
-  if (res.silent) return toast(`积压 ${res.pending} 页 ≥ 上限 ${res.throttle}：静默唤醒`);
-  if (res.empty) return toast("词库没有可用词条");
-  location.hash = pageLink(res.page.id);
+  sync();
 }
 
 /* ---------- 册子 ---------- */
@@ -314,7 +360,7 @@ async function viewSettings(params = new URLSearchParams()) {
         ),
         el("label", { class: "btn ghost" }, "导入词表（JSON / JSONL / TSV）", el("input", { type:"file", accept:".json,.jsonl,.tsv", style:"display:none", onchange: async (ev) => { const file=ev.target.files?.[0]; if(!file) return; try { const count=await importWords(await file.text(),file.name); toast(`已导入 ${count} 个词，请刷新页面`); } catch(error) { toast(error.message); } } }))
       ),
-      el("p", { class: "muted" }, "单词本、学习记录和设置只存在当前浏览器。清除网站数据会删除它们，请定期导出备份。词表 TSV 每行格式：语言代码、词形、中文释义、读音（以 Tab 分隔）；语言代码为 en / ja / ru。")
+      el("p", { class: "muted" }, "网站随附英语考试词表和日语词表，首次访问自动载入，无需另找本地词库。英语词表来自 ECDICT，日语词表来自 OpenJLPT；", el("a", { href: "./data/ATTRIBUTION.txt", target: "_blank", rel: "noopener noreferrer" }, "查看词库来源与许可"), "。个人单词本、学习记录和设置只保存在当前浏览器，不会上传。清除网站数据会删除这些个人数据，请定期导出备份。词表 TSV 每行格式：语言代码、词形、中文释义、读音（以 Tab 分隔）；语言代码为 en / ja / ru。")
     ),
     panel("配置 AI",
       el("p", { class: "muted" }, "连接你电脑上运行的 AI，选择已下载的模型。生成故事时只把本轮待复习词发给这个本机服务；服务自身的联网行为由你在该软件中设置。"),
@@ -325,8 +371,7 @@ async function viewSettings(params = new URLSearchParams()) {
       el("div", { class: "ai-actions" }, detectModels, saveAi, returnLink),
       aiMessage,
       aiHint),
-    presetPanel,
-    el("p", { class: "muted" }, el("a", { href: "./vendor/spellophone/NOTICE.txt", target: "_blank", rel: "noopener noreferrer" }, "离线发音开源许可"))
+    presetPanel
   );
   void mountPresets(presetPanel, localRequest);
 }
@@ -350,4 +395,24 @@ function route() {
 window.addEventListener("hashchange", route);
 document.addEventListener("contextmenu", (event) => event.preventDefault());
 window.addEventListener("pointerdown", () => sfx.unlock(), { once: true });
+if (gameCursor) {
+  let cursorSwingTimer;
+  window.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "mouse") return;
+    gameCursor.style.left = `${event.clientX - 5}px`;
+    gameCursor.style.top = `${event.clientY - 5}px`;
+    gameCursor.classList.add("visible");
+  });
+  window.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "mouse" || event.button !== 0) return;
+    gameCursor.classList.remove("swing");
+    void gameCursor.offsetWidth;
+    gameCursor.classList.add("swing");
+    clearTimeout(cursorSwingTimer);
+    cursorSwingTimer = setTimeout(() => gameCursor.classList.remove("swing"), 260);
+  });
+  window.addEventListener("blur", () => gameCursor.classList.remove("visible", "swing"));
+  document.documentElement.addEventListener("mouseleave", () => gameCursor.classList.remove("visible"));
+  document.documentElement.addEventListener("mouseenter", () => gameCursor.classList.add("visible"));
+}
 route();
